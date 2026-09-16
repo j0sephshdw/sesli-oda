@@ -61,7 +61,9 @@ export default function AudioRoom({ roomName, onLeave }) {
 
       try {
         setNoiseStatus('🛡️ Başlatılıyor...');
-        const currentProcessor = KrispNoiseFilter();
+        const currentProcessor = KrispNoiseFilter({
+  assetsLocation: '/krisp'
+});
         processorRef.current = currentProcessor;
         await track.setProcessor(currentProcessor);
         setIsNoiseCancellingActive(true);
@@ -176,7 +178,9 @@ export default function AudioRoom({ roomName, onLeave }) {
         setIsNoiseCancellingActive(false);
         setNoiseStatus('🛡️ Gürültü Engelleme (KAPALI)');
       } else {
-        const newProcessor = KrispNoiseFilter();
+        const newProcessor = KrispNoiseFilter({
+  assetsLocation: '/krisp'
+});
         processorRef.current = newProcessor;
         await track.setProcessor(newProcessor);
         setIsNoiseCancellingActive(true);
