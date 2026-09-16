@@ -21,6 +21,18 @@ const getAvatarColor = (name) => {
   return colors[Math.abs(hash) % colors.length];
 };
 
+// YENİ: Linkleri Tıklanabilir Yapan Fonksiyon
+const renderMessageText = (text) => {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+  return parts.map((part, i) => {
+    if (part.match(urlRegex)) {
+      return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">{part}</a>;
+    }
+    return part;
+  });
+};
+
 export default function AudioRoom({ roomName, onLeave }) {
   const room = useRoomContext();
   const participants = useParticipants(); 
@@ -37,19 +49,35 @@ export default function AudioRoom({ roomName, onLeave }) {
   
   const [isDeafened, setIsDeafened] = useState(false);
   const [isHandRaised, setIsHandRaised] = useState(false);
-  const [isAfk, setIsAfk] = useState(false); // YENİ: AFK Durumu
+  const [isAfk, setIsAfk] = useState(false);
   const [floatingEmojis, setFloatingEmojis] = useState([]);
   
   const [isChatVisible, setIsChatVisible] = useState(true);
-  
-  // YENİ: Yazıyor... Animasyonu için state
   const [typing, setTyping] = useState({});
+
+  // YENİ: Ayarlar Menüsü Stateleri
+  const [showSettings, setShowSettings] = useState(false);
+  const [audioDevices, setAudioDevices] = useState([]);
+  const [videoDevices, setVideoDevices] = useState([]);
 
   const processorRef = useRef(null);
   const stageRef = useRef(null);
   const prevChatCount = useRef(0);
 
-  // MİKROFON AÇ/KAPAT SES EFEKTİ (YENİ)
+  // YENİ: Cihazları Getir
+  useEffect(() => {
+    if (showSettings) {
+      navigator.mediaDevices.enumerateDevices().then(devices => {
+        setAudioDevices(devices.filter(d => d.kind === 'audioinput'));
+        setVideoDevices(devices.filter(d => d.kind === 'videoinput'));
+      });
+    }
+  }, [showSettings]);
+
+  const handleDeviceChange = async (kind, deviceId) => {
+    if (room) await room.switchActiveDevice(kind, deviceId);
+  };
+
   const playMicTone = (isMuting) => {
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -109,7 +137,9 @@ export default function AudioRoom({ roomName, onLeave }) {
          gain.gain.setValueAtTime(0.02, ctx.currentTime);
          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
       }
-      osc.start(); osc.stop(ctx.currentTime + (type === 'screen_share' ? 0.2 : 0.15));
+
+      osc.start();
+      osc.stop(ctx.currentTime + (type === 'screen_share' ? 0.2 : 0.15));
     } catch(e) {}
   };
 
@@ -141,7 +171,6 @@ export default function AudioRoom({ roomName, onLeave }) {
     if(screenTracks.length > 0) playTone('screen_share');
   }, [screenTracks.length]);
 
-  // Yazıyor... durumunu temizleyen döngü (3 saniyede bir eski yazanları siler)
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
@@ -240,7 +269,6 @@ export default function AudioRoom({ roomName, onLeave }) {
     if (nextState) sendEmojiReaction('✋');
   };
 
-  // YENİ: AFK Fonksiyonu
   const toggleAfk = () => {
     const nextState = !isAfk;
     setIsAfk(nextState);
@@ -307,11 +335,38 @@ export default function AudioRoom({ roomName, onLeave }) {
 
   const formatTime = (timestamp) => new Date(timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
-  // Aktif yazan kişilerin listesi
   const activeTypers = Object.keys(typing).filter(name => name !== (localParticipant?.name || localParticipant?.identity || '').split('_')[0]);
 
   return (
     <div className="custom-room-layout">
+      {/* YENİ: Ayarlar Modalı */}
+      {showSettings && (
+        <div className="settings-modal-overlay" onClick={() => setShowSettings(false)}>
+          <div className="settings-modal" onClick={e => e.stopPropagation()}>
+            <div className="settings-header">
+              <h3>⚙️ Cihaz Ayarları</h3>
+              <button onClick={() => setShowSettings(false)} className="close-btn">✖</button>
+            </div>
+            <div className="settings-content">
+              <div className="form-group">
+                <label>Mikrofon Seçimi</label>
+                <select onChange={(e) => handleDeviceChange('audioinput', e.target.value)}>
+                  <option value="">Sistem Varsayılanı</option>
+                  {audioDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || `Mikrofon ${d.deviceId.slice(0,5)}`}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Kamera Seçimi</label>
+                <select onChange={(e) => handleDeviceChange('videoinput', e.target.value)}>
+                  <option value="">Sistem Varsayılanı</option>
+                  {videoDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || `Kamera ${d.deviceId.slice(0,5)}`}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="floating-emoji-container">
         {floatingEmojis.map((item) => (
           <span key={item.id} className="floating-emoji" style={{ left: `${item.left}%` }}>{item.emoji}</span>
@@ -361,7 +416,6 @@ export default function AudioRoom({ roomName, onLeave }) {
                   
                   {isUserHandRaised && <div className="hand-raised-badge">✋</div>}
                   {isUserSharingScreen && <div className="broadcaster-badge">🔴 Yayında</div>}
-                  {/* AFK ROZETİ */}
                   {isUserAfk && <div className="afk-badge">☕ AFK</div>}
 
                   {isCamOn ? (
@@ -421,6 +475,7 @@ export default function AudioRoom({ roomName, onLeave }) {
             <button onClick={() => sendEmojiReaction('😂')} className="action-btn">😂</button>
             <button onClick={toggleHandRaise} className={`action-btn ${isHandRaised ? 'active-hand' : ''}`} title="El Kaldır">✋</button>
             <button onClick={toggleAfk} className={`action-btn ${isAfk ? 'active-hand' : ''}`} title="AFK Modu">☕</button>
+            <button onClick={() => setShowSettings(true)} className="action-btn" title="Ayarlar">⚙️</button>
           </div>
           
           <div className="main-controls">
@@ -428,7 +483,7 @@ export default function AudioRoom({ roomName, onLeave }) {
               className={`ctrl-btn ${!isMicrophoneEnabled ? 'muted' : 'active'}`} 
               onClick={() => {
                 const nextState = !isMicrophoneEnabled;
-                playMicTone(!nextState); // Ses efekti
+                playMicTone(!nextState); 
                 localParticipant?.setMicrophoneEnabled(nextState);
               }}
             >
@@ -445,7 +500,6 @@ export default function AudioRoom({ roomName, onLeave }) {
               {isCameraEnabled ? '📹 Kamerayı Kapat' : '📹 Kamera Aç'}
             </button>
 
-            {/* YENİ: Ekran Paylaşımı yaparken "audio: true" ile sistem/oyun sesi gönderilir */}
             <button className={`ctrl-btn ${isScreenShareEnabled ? 'active' : ''}`} onClick={() => localParticipant?.setScreenShareEnabled(!isScreenShareEnabled, { audio: true })}>
               📺 {isScreenShareEnabled ? 'Yayını Kapat' : 'Ekran Paylaş'}
             </button>
@@ -465,13 +519,13 @@ export default function AudioRoom({ roomName, onLeave }) {
                   <span className="chat-sender">{(m.from?.name || m.from?.identity || 'Anonim').split('_')[0]}</span>
                   <span className="chat-time">{formatTime(m.timestamp)}</span>
                 </div>
-                <div className="chat-text">{m.message}</div>
+                {/* YENİ: Tıklanabilir Linkler İçin Render Fonksiyonu Kullanıldı */}
+                <div className="chat-text">{renderMessageText(m.message)}</div>
               </div>
             ))}
             <div ref={chatEndRef} />
           </div>
           
-          {/* YAZIYOR... GÖSTERGESİ */}
           {activeTypers.length > 0 && (
             <div className="typing-indicator">
               <span className="typing-dots"><span>.</span><span>.</span><span>.</span></span>

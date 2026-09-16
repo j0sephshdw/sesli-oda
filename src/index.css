@@ -1103,3 +1103,126 @@ body {
         transform: translateY(0);
     }
 }
+/* ==========================================================================
+   15. AYARLAR MODALI & SOHBET LİNKLERİ
+   ========================================================================== */
+
+/* Ayarlar Menüsü Arka Planı (Karanlık Cam Efekti) */
+.settings-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeInModal 0.2s ease-out forwards;
+}
+
+/* Ayarlar Kartı */
+.settings-modal {
+    background: #313338;
+    width: 90%;
+    max-width: 400px;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transform: scale(0.95);
+    animation: scaleUpModal 0.2s ease-out forwards;
+}
+
+.settings-header {
+    background: #2b2d31;
+    padding: 15px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #1e1f22;
+}
+
+    .settings-header h3 {
+        margin: 0;
+        font-size: 16px;
+        color: #f2f3f5;
+    }
+
+.close-btn {
+    background: transparent;
+    border: none;
+    color: #949ba4;
+    font-size: 16px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+    .close-btn:hover {
+        color: #da373c;
+        transform: scale(1.1);
+    }
+
+.settings-content {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+    /* Ayarlar içindeki açılır menüler (Select) */
+    .settings-content select {
+        width: 100%;
+        padding: 10px;
+        border-radius: 6px;
+        border: 1px solid #1e1f22;
+        background: #1e1f22;
+        color: #fff;
+        font-size: 14px;
+        outline: none;
+        cursor: pointer;
+        appearance: none; /* Standart oku gizler, daha şık durur */
+    }
+
+        .settings-content select:focus {
+            border-color: #5865f2;
+        }
+
+/* Sohbete Atılan Mavi Linkler */
+.chat-link {
+    color: #00a8fc;
+    text-decoration: none;
+    word-break: break-all; /* Uzun linklerin taşımasını engeller */
+}
+
+    .chat-link:hover {
+        text-decoration: underline;
+    }
+
+/* Animasyonlar */
+@keyframes fadeInModal {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes scaleUpModal {
+    from {
+        transform: scale(0.95);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
