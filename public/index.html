@@ -6,8 +6,6 @@
     <title>Özel Sesli İletişim Merkezi</title>
     <!-- LiveKit Client -->
     <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
-    <!-- Krisp Yapay Zeka Gürültü Engelleme Eklentisi -->
-    <script src="https://cdn.jsdelivr.net/npm/@livekit/krisp-noise-filter/dist/krisp-noise-filter.umd.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -342,14 +340,9 @@
 
                 if (isEnabled) {
                     if (!krispProcessor) {
-                        // Tarayıcı nesne tanımı güvenli hale getirildi
-                        const KrispSDK = window.LivekitKrispNoiseFilter || window.LiveKitKrispNoiseFilter || window.KrispNoiseFilter;
-                        
-                        if (!KrispSDK) {
-                            console.error("Krisp kütüphanesi yüklenemedi.");
-                            return;
-                        }
-                        krispProcessor = KrispSDK.KrispNoiseFilter();
+                        // Dinamik ESM Modül İçe Aktarımı (Hata Çözümü)
+                        const krispModule = await import('https://cdn.jsdelivr.net/npm/@livekit/krisp-noise-filter/+esm');
+                        krispProcessor = krispModule.KrispNoiseFilter();
                     }
                     await micTrack.setProcessor(krispProcessor);
                     console.log("Krisp AI Gürültü Engelleme Aktif Edildi.");
