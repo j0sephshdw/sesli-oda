@@ -33,10 +33,20 @@ export default function AudioRoom({ roomName, onLeave }) {
 
   const processorRef = useRef(null);
 
+  // MESAJ GÖNDERME FONKSİYONU
+  const handleSendMessage = () => {
+    if (msg.trim()) {
+      send(msg);
+      setMsg('');
+    }
+  };
+
+  // Otomatik sohbet kaydırma
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
+  // Krisp AI Gürültü Filtresi Yönetimi
   useEffect(() => {
     const setupKrisp = async () => {
       if (!isMicrophoneEnabled) {
@@ -71,16 +81,21 @@ export default function AudioRoom({ roomName, onLeave }) {
     };
   }, [isMicrophoneEnabled, localParticipant]);
 
+  // Ses Sinyalleri ve Olay Dinleyicileri
   useEffect(() => {
     const playTone = (type) => {
       try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        if (ctx.state === 'suspended') ctx.resume();
+
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
         osc.type = 'sine';
         
-        // Ses tasarımını daha modern ve yumuşak hale getirdik
         if (type === 'join') {
           osc.frequency.setValueAtTime(300, ctx.currentTime);
           osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.15);
@@ -90,7 +105,8 @@ export default function AudioRoom({ roomName, onLeave }) {
         }
         gain.gain.setValueAtTime(0.02, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-        osc.start(); osc.stop(ctx.currentTime + 0.2);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.2);
       } catch(e) {}
     };
 
@@ -124,22 +140,23 @@ export default function AudioRoom({ roomName, onLeave }) {
 
   const sendEmojiReaction = (emoji) => {
     spawnFloatingEmoji(emoji);
-    const data = JSON.stringify({ type: 'EMOJI_REACTION', emoji });
-    room.localParticipant.publishData(new TextEncoder().encode(data), { reliable: true });
+    if (room?.localParticipant) {
+      const data = JSON.stringify({ type: 'EMOJI_REACTION', emoji });
+      room.localParticipant.publishData(new TextEncoder().encode(data), { reliable: true });
+    }
   };
 
   const toggleDeafen = () => {
     const nextState = !isDeafened;
     setIsDeafened(nextState);
-    // Diğer kullanıcıların kulaklık kapattığımızı görmesi için attribute güncelliyoruz
-    localParticipant.setAttributes({ deafened: nextState ? 'true' : 'false' });
+    localParticipant?.setAttributes({ deafened: nextState ? 'true' : 'false' });
   };
 
   const toggleHandRaise = () => {
     const nextState = !isHandRaised;
     setIsHandRaised(nextState);
-    localParticipant.setAttributes({ handRaised: nextState ? 'true' : 'false' });
-    if (nextState) sendEmojiReaction('✋'); // El kaldırınca emoji de fırlat
+    localParticipant?.setAttributes({ handRaised: nextState ? 'true' : 'false' });
+    if (nextState) sendEmojiReaction('✋');
   };
 
   const copyInvite = () => {
@@ -168,10 +185,16 @@ export default function AudioRoom({ roomName, onLeave }) {
     } catch (err) {}
   };
 
+  const handleLeaveRoom = () => {
+    room?.disconnect();
+    onLeave();
+  };
+
   const formatTime = (timestamp) => new Date(timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
   return (
     <div className="custom-room-layout">
+      {/* YÜZEN EMOJİ ALANI */}
       <div className="floating-emoji-container">
         {floatingEmojis.map((item) => (
           <span key={item.id} className="floating-emoji" style={{ left: `${item.left}%` }}>{item.emoji}</span>
@@ -197,9 +220,9 @@ export default function AudioRoom({ roomName, onLeave }) {
           
           <div className="voice-users-grid">
             {participants.map((p) => {
-              // Canlı LiveKit attributelarını oku
               const isUserDeafened = p.attributes?.deafened === 'true';
               const isUserHandRaised = p.attributes?.handRaised === 'true';
+              const displayName = (p.name || p.identity || 'Misafir').split('_')[0];
 
               return (
                 <div key={p.identity} className={`voice-user-card ${p.isSpeaking ? 'speaking' : ''}`}>
@@ -208,7 +231,7 @@ export default function AudioRoom({ roomName, onLeave }) {
                   {isUserHandRaised && <div className="hand-raised-badge">✋</div>}
 
                   <div className="avatar">👤</div>
-                  <div className="name">{p.identity.split('_')[0]}</div>
+                  <div className="name">{displayName}</div>
                   
                   {isUserDeafened ? (
                     <div className="muted-badge deafened">🎧 Sağır</div>
@@ -220,7 +243,7 @@ export default function AudioRoom({ roomName, onLeave }) {
                      </div>
                   ) : null}
                   
-                  {p.identity !== localParticipant.identity && (
+                  {p.identity !== localParticipant?.identity && (
                     <input 
                       type="range" min="0" max="1" step="0.01" defaultValue="1" 
                       className="vol-slider" title="Sesi ayarla"
@@ -236,7 +259,6 @@ export default function AudioRoom({ roomName, onLeave }) {
           </div>
         </div>
 
-        {/* GLASSMORPHISM KONTROL BAR */}
         <footer className="room-controls-wrapper">
           <div className="interactive-actions">
             <button onClick={() => sendEmojiReaction('🔥')} className="action-btn">🔥</button>
@@ -247,7 +269,7 @@ export default function AudioRoom({ roomName, onLeave }) {
           </div>
           
           <div className="main-controls">
-            <button className={`ctrl-btn ${!isMicrophoneEnabled ? 'muted' : 'active'}`} onClick={() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}>
+            <button className={`ctrl-btn ${!isMicrophoneEnabled ? 'muted' : 'active'}`} onClick={() => localParticipant?.setMicrophoneEnabled(!isMicrophoneEnabled)}>
               {isMicrophoneEnabled ? '🎙️ Açık' : '🔇 Kapalı'}
             </button>
             <button className={`ctrl-btn ${isDeafened ? 'muted' : ''}`} onClick={toggleDeafen}>
@@ -256,10 +278,10 @@ export default function AudioRoom({ roomName, onLeave }) {
             <button className={`ctrl-btn ${isKrispActive ? 'krisp-active' : 'krisp-inactive'}`} onClick={toggleKrisp} disabled={!isMicrophoneEnabled}>
               {krispStatus}
             </button>
-            <button className={`ctrl-btn ${isScreenShareEnabled ? 'active' : ''}`} onClick={() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled)}>
+            <button className={`ctrl-btn ${isScreenShareEnabled ? 'active' : ''}`} onClick={() => localParticipant?.setScreenShareEnabled(!isScreenShareEnabled)}>
               📺 {isScreenShareEnabled ? 'Yayını Kapat' : 'Ekran Paylaş'}
             </button>
-            <button className="leave-btn" onClick={onLeave}>🚪 Ayrıl</button>
+            <button className="leave-btn" onClick={handleLeaveRoom}>🚪 Ayrıl</button>
           </div>
         </footer>
       </div>
@@ -271,7 +293,7 @@ export default function AudioRoom({ roomName, onLeave }) {
           {chatMessages.map(m => (
             <div key={m.id} className="chat-msg">
               <div className="chat-msg-header">
-                <span className="chat-sender">{m.from?.identity.split('_')[0]}</span>
+                <span className="chat-sender">{(m.from?.name || m.from?.identity || 'Anonim').split('_')[0]}</span>
                 <span className="chat-time">{formatTime(m.timestamp)}</span>
               </div>
               <div className="chat-text">{m.message}</div>
@@ -280,9 +302,19 @@ export default function AudioRoom({ roomName, onLeave }) {
           <div ref={chatEndRef} />
         </div>
         <div className="chat-input-area">
-          <input value={msg} onChange={e => setMsg(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage()} placeholder="Mesaj..." />
+          <input 
+            value={msg} 
+            onChange={e => setMsg(e.target.value)} 
+            onKeyDown={e => e.key === 'Enter' && handleSendMessage()} 
+            placeholder="Mesaj..." 
+          />
           <button onClick={handleSendMessage}>Gönder</button>
         </div>
+      </div>
+
+      {/* KİŞİSEL İMZA (WATERMARK) */}
+      <div className="watermark-badge">
+        ⚡ Made by <span>Hacıkopter</span>
       </div>
 
       <RoomAudioRenderer volume={isDeafened ? 0 : 1} />
