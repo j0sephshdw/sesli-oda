@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { LiveKitRoom } from '@livekit/components-react';
-import { KrispNoiseFilter, isKrispNoiseFilterSupported } from '@livekit/krisp-noise-filter';
 import AudioRoom from './AudioRoom';
 import '@livekit/components-styles';
 
@@ -42,7 +41,6 @@ export default function App() {
       });
 
       const data = await response.json();
-
       if (!response.ok) throw new Error(data.error || 'Bağlantı reddedildi.');
       
       setToken(data.token);
@@ -61,6 +59,15 @@ export default function App() {
     setPassword('');
   };
 
+  if (token && (!LIVEKIT_URL || LIVEKIT_URL.includes('kendi-livekit-url'))) {
+    return (
+      <div style={{color:'white', padding:'20px', textAlign:'center', marginTop:'50px'}}>
+        <h2>🛑 Kritik Hata: LiveKit URL Bulunamadı</h2>
+        <p>Lütfen Render panelinden <b>VITE_LIVEKIT_URL</b> ayarını ekleyin.</p>
+      </div>
+    );
+  }
+
   if (token) {
     return (
       <LiveKitRoom
@@ -72,9 +79,9 @@ export default function App() {
         data-lk-theme="default"
         options={{
           audioCaptureDefaults: {
-            autoGainControl: false, // AGC kapalı (Oyun oynarken ses seviyesi aniden değişmez)
-            echoCancellation: true,
-            noiseSuppression: true,
+            autoGainControl: false, // Oyun oynarken ses aniden kısılmasın
+            echoCancellation: true, // Yankı önleyici
+            noiseSuppression: true, // Klavye ve dip sesleri için Yapay Zeka filtresi
           }
         }}
       >
