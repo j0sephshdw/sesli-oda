@@ -5,7 +5,7 @@ import '@livekit/components-styles';
 
 // DİKKAT: Render'daki Environment Variables kısmında VITE_LIVEKIT_URL tanımlı olmalı.
 // Veya 'wss://...' yazan yere kendi LiveKit linkini doğrudan yapıştırabilirsin.
-const LIVEKIT_URL = import.meta.env.VITE_LIVEKIT_URL || 'wss://kendi-livekit-url-adresini-buraya-yaz.livekit.cloud';
+const LIVEKIT_URL = import.meta.env.VITE_LIVEKIT_URL || 'wss://bizim-dc-x3m53dz5.livekit.cloud';
 
 export default function App() {
   const [roomName, setRoomName] = useState('');
