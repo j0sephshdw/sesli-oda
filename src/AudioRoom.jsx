@@ -1,35 +1,28 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React from 'react';
 import {
   RoomAudioRenderer,
+  ControlBar,
+  GridLayout,
   ParticipantTile,
-  useParticipants,
-  useLocalParticipant,
+  Chat,
+  useTracks,
   useRoomContext,
-  useChat
+  useLocalParticipant
 } from '@livekit/components-react';
+import { Track } from 'livekit-client';
 
 export default function AudioRoom({ roomName, onLeave }) {
   const room = useRoomContext();
-  // Odadaki herkesi (mikrofonu kapalı olsa bile) listeler
-  const participants = useParticipants(); 
+  const { localParticipant } = useLocalParticipant();
   
-  const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant();
-
-  // Custom Chat Sistemi (Kayıp mesaj sorununu çözer)
-  const { send, chatMessages } = useChat();
-  const [msg, setMsg] = useState('');
-  const chatEndRef = useRef(null);
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages]);
-
-  const handleSendMessage = () => {
-    if (msg.trim()) {
-      send(msg);
-      setMsg('');
-    }
-  };
+  // withPlaceholder: true sayesinde mikrofonu kapalı olanlar da ekranda görünür!
+  const tracks = useTracks(
+    [
+      { source: Track.Source.Microphone, withPlaceholder: true },
+      { source: Track.Source.ScreenShare, withPlaceholder: false }
+    ],
+    { onlySubscribed: false }
+  );
 
   const copyInvite = () => {
     const url = `${window.location.origin}?room=${encodeURIComponent(roomName)}`;
@@ -37,47 +30,43 @@ export default function AudioRoom({ roomName, onLeave }) {
     alert('✅ Davet linki kopyalandı! Arkadaşlarına gönderebilirsin.');
   };
 
+  const sendEmoji = async (emoji) => {
+    const strData = JSON.stringify({ type: 'emoji', emoji: emoji });
+    const data = new TextEncoder().encode(strData);
+    await localParticipant.publishData(data, { reliable: true });
+  };
+
   return (
     <div className="custom-room-layout">
-      {/* SOL PANEL: KİŞİLER VE KONTROLLER */}
+      {/* SOL PANEL (Kişiler ve Kontroller) */}
       <div className="main-panel">
         <header className="room-header">
           <div className="header-info">
             <h3>🔊 Oda: {roomName}</h3>
             <span className="live-badge">🔴 Canlı</span>
-            <span className="people-count">👥 {participants.length} Kişi</span>
           </div>
           <button onClick={copyInvite} className="invite-btn">🔗 Davet Linki Kopyala</button>
         </header>
 
-        {/* Odadaki Herkesin Listelendiği Alan */}
+        {/* ÇÖKEN KISIM BURASIYDI: GridLayout ile değiştirdik, artık sorunsuz! */}
         <div className="participants-grid">
-          {participants.map((p) => (
-            <ParticipantTile 
-              key={p.identity} 
-              participant={p} 
-              disableVideoFallback={false}
-            />
-          ))}
+          <GridLayout tracks={tracks} style={{ height: '100%', width: '100%' }}>
+            <ParticipantTile />
+          </GridLayout>
         </div>
 
-        {/* Özel Kontrol Butonlarımız (Asla Kaybolmaz) */}
+        {/* ALT BUTONLAR */}
         <footer className="room-controls-wrapper">
+          <div className="interactive-actions">
+            <button onClick={() => sendEmoji('✋')} className="action-btn">✋</button>
+            <button onClick={() => sendEmoji('🔥')} className="action-btn">🔥</button>
+            <button onClick={() => sendEmoji('👍')} className="action-btn">👍</button>
+            <button onClick={() => sendEmoji('😂')} className="action-btn">😂</button>
+          </div>
+          
           <div className="main-controls">
-            <button 
-              className={`ctrl-btn ${!isMicrophoneEnabled ? 'muted' : 'active'}`} 
-              onClick={() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
-            >
-              {isMicrophoneEnabled ? '🎙️ Mikrofonu Kapat' : '🔇 Mikrofonu Aç'}
-            </button>
-            
-            <button 
-              className={`ctrl-btn ${isScreenShareEnabled ? 'active' : ''}`} 
-              onClick={() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled)}
-            >
-              📺 {isScreenShareEnabled ? 'Yayını Durdur' : 'Ekran Paylaş'}
-            </button>
-
+            {/* LiveKit'in varsayılan profesyonel butonları */}
+            <ControlBar controls={{ microphone: true, screenShare: true, camera: false, chat: false, leave: false }} />
             <button className="leave-btn" onClick={onLeave}>
               🚪 Odadan Ayrıl
             </button>
@@ -85,28 +74,9 @@ export default function AudioRoom({ roomName, onLeave }) {
         </footer>
       </div>
 
-      {/* SAĞ PANEL: GARANTİLİ YAZILI SOHBET */}
-      <div className="custom-chat-panel">
-        <div className="chat-header">💬 Yazılı Sohbet</div>
-        <div className="chat-messages">
-          <div className="chat-sys-msg">Odaya giriş yapıldı. Mesajlar uçtan uca şifrelidir.</div>
-          {chatMessages.map(m => (
-            <div key={m.id} className="chat-msg">
-              <span className="chat-sender">{m.from?.identity.split('_')[0]}:</span>
-              <span className="chat-text">{m.message}</span>
-            </div>
-          ))}
-          <div ref={chatEndRef} />
-        </div>
-        <div className="chat-input-area">
-          <input 
-            value={msg} 
-            onChange={e => setMsg(e.target.value)} 
-            onKeyDown={e => e.key === 'Enter' && handleSendMessage()} 
-            placeholder="Mesaj yaz..." 
-          />
-          <button onClick={handleSendMessage}>Gönder</button>
-        </div>
+      {/* SAĞ PANEL (Garantili Yazılı Sohbet) */}
+      <div className="chat-panel">
+        <Chat />
       </div>
 
       <RoomAudioRenderer />

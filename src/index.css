@@ -103,6 +103,7 @@ body {
     flex-direction: column;
     padding: 20px;
     background: #1e1f22;
+    min-width: 0; /* Taşıp sağ paneli ezmesini engeller */
 }
 
 .room-header {
@@ -126,14 +127,6 @@ body {
     font-size: 12px;
     font-weight: bold;
     animation: pulse 2s infinite;
-}
-
-.people-count {
-    background: #2b2d31;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 13px;
-    font-weight: bold;
 }
 
 @keyframes pulse {
@@ -165,13 +158,19 @@ body {
         background: #1a7c43;
     }
 
+/* Grid Layout Container */
 .participants-grid {
     flex: 1;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    display: flex;
+    min-height: 0;
+    width: 100%;
+}
+
+/* LiveKit'in Kendi Grid Yapısına Ayar */
+.lk-grid-layout {
     gap: 15px;
-    overflow-y: auto;
-    align-content: start;
+    width: 100%;
+    height: 100%;
 }
 
 /* KİŞİ PROFİLLERİ VE KONUŞAN KİŞİ ANİMASYONU */
@@ -200,34 +199,30 @@ body {
     border-radius: 12px;
 }
 
+.interactive-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.action-btn {
+    background: #1e1f22;
+    border: 1px solid #3f4147;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: 0.2s;
+}
+
+    .action-btn:hover {
+        background: #3f4147;
+    }
+
 .main-controls {
     display: flex;
     align-items: center;
     gap: 15px;
 }
-
-.ctrl-btn {
-    background: #4f545c;
-    color: white;
-    border: none;
-    padding: 12px 20px;
-    border-radius: 8px;
-    font-weight: bold;
-    cursor: pointer;
-    transition: 0.2s;
-}
-
-    .ctrl-btn:hover {
-        background: #5d6269;
-    }
-
-    .ctrl-btn.active {
-        background: #23a55a;
-    }
-
-    .ctrl-btn.muted {
-        background: #da373c;
-    }
 
 .leave-btn {
     background: transparent;
@@ -238,6 +233,8 @@ body {
     font-weight: bold;
     cursor: pointer;
     transition: 0.2s;
+    height: 40px;
+    margin-left: 15px;
 }
 
     .leave-btn:hover {
@@ -245,8 +242,8 @@ body {
         color: white;
     }
 
-/* CUSTOM SOHBET PANELİ */
-.custom-chat-panel {
+/* SOHBET PANELİ */
+.chat-panel {
     width: 350px;
     background: #2b2d31;
     border-left: 1px solid #1e1f22;
@@ -254,82 +251,10 @@ body {
     flex-direction: column;
 }
 
-.chat-header {
-    padding: 20px;
-    font-weight: bold;
-    border-bottom: 1px solid #1e1f22;
-    background: #313338;
+/* Sohbet Paneli içini LiveKit'in şablonuna tam oturttuk */
+.lk-chat {
+    width: 100%;
+    height: 100%;
+    border: none !important;
+    background: transparent !important;
 }
-
-.chat-messages {
-    flex: 1;
-    overflow-y: auto;
-    padding: 15px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.chat-sys-msg {
-    color: #949ba4;
-    font-size: 12px;
-    font-style: italic;
-    text-align: center;
-    margin-bottom: 10px;
-}
-
-.chat-msg {
-    background: #1e1f22;
-    padding: 10px;
-    border-radius: 8px;
-    font-size: 14px;
-    line-height: 1.4;
-}
-
-.chat-sender {
-    color: #5865f2;
-    font-weight: bold;
-    margin-right: 5px;
-}
-
-.chat-text {
-    color: #f2f3f5;
-    word-wrap: break-word;
-}
-
-.chat-input-area {
-    padding: 15px;
-    display: flex;
-    gap: 10px;
-    border-top: 1px solid #1e1f22;
-    background: #313338;
-}
-
-    .chat-input-area input {
-        flex: 1;
-        padding: 12px;
-        border-radius: 6px;
-        border: none;
-        background: #1e1f22;
-        color: white;
-        outline: none;
-    }
-
-        .chat-input-area input:focus {
-            border: 1px solid #5865f2;
-            padding: 11px;
-        }
-
-    .chat-input-area button {
-        padding: 10px 15px;
-        background: #5865f2;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
-        font-weight: bold;
-    }
-
-        .chat-input-area button:hover {
-            background: #4752c4;
-        }
