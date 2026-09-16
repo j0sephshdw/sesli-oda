@@ -1,12 +1,510 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sesli Oda</title>
+    <meta charset="UTF-8">
+    <!-- Mobil cihazlarda sayfanın bozulmasını ve yakınlaşmasını kesin olarak engeller -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Özel Sesli İletişim Merkezi</title>
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #1e1f22;
+            color: #f2f3f5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 10px;
+        }
+
+        .card {
+            background: #313338;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+            width: 100%;
+            max-width: 900px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        h2 {
+            margin: 0;
+            font-size: 20px;
+            color: #fff;
+            text-align: center;
+        }
+
+        #login-form {
+            text-align: center;
+            max-width: 350px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 6px;
+            border: 1px solid #1e1f22;
+            background: #1e1f22;
+            color: #fff;
+            outline: none;
+        }
+
+            input:focus {
+                border-color: #5865f2;
+            }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: 0.2s;
+            background: #5865f2;
+            color: white;
+        }
+
+            button:hover {
+                background: #4752c4;
+            }
+
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+            .action-buttons button {
+                flex: 1;
+                min-width: 100px;
+                padding: 10px;
+            }
+
+        .mute-btn {
+            background: #23a55a;
+        }
+
+            .mute-btn.active {
+                background: #da373c;
+            }
+
+        .share-btn {
+            background: #4f545c;
+        }
+
+            .share-btn.active {
+                background: #5865f2;
+            }
+
+        .invite-btn {
+            background: #00a8fc;
+        }
+
+        .leave-btn {
+            background: #da373c;
+        }
+
+        #app-interface {
+            display: none;
+            gap: 20px;
+            align-items: stretch;
+        }
+
+        #video-container {
+            width: 100%;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+            #video-container video {
+                max-width: 100%;
+                max-height: 40vh;
+                border-radius: 8px;
+                background: #000;
+            }
+
+        .users-panel {
+            flex: 1;
+            background: #2b2d31;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #user-items {
+            overflow-y: auto;
+            flex: 1;
+            margin-bottom: 10px;
+        }
+
+        .user-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #1e1f22;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            border: 2px solid transparent;
+            transition: all 0.2s ease;
+            font-size: 14px;
+        }
+
+            .user-item.speaking {
+                border-color: #23a55a;
+                box-shadow: 0 0 8px rgba(35, 165, 90, 0.4);
+            }
+
+        .volume-slider {
+            width: 70px;
+            cursor: pointer;
+        }
+
+        .chat-panel {
+            flex: 1.5;
+            background: #2b2d31;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-messages {
+            flex: 1;
+            height: 250px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+            font-size: 14px;
+            padding-right: 5px;
+        }
+
+        .chat-msg {
+            margin-bottom: 8px;
+            line-height: 1.4;
+            word-break: break-word;
+        }
+
+            .chat-msg strong {
+                color: #5865f2;
+            }
+
+        .sys-msg {
+            color: #949ba4;
+            font-size: 12px;
+            font-style: italic;
+            margin-bottom: 8px;
+        }
+
+        .chat-input-area {
+            display: flex;
+            gap: 10px;
+        }
+
+            .chat-input-area input {
+                margin: 0;
+                flex: 1;
+            }
+
+            .chat-input-area button {
+                width: auto;
+                padding: 0 20px;
+            }
+
+        #status {
+            text-align: center;
+            margin-top: 15px;
+            font-size: 13px;
+            color: #949ba4;
+        }
+
+        /* MOBİL GÖRÜNÜM (Responsive Tasarım) */
+        @media (max-width: 768px) {
+            body {
+                padding: 0;
+                align-items: flex-start;
+            }
+
+            .card {
+                width: 100%;
+                min-height: 100vh;
+                border-radius: 0;
+                padding: 15px;
+                justify-content: flex-start;
+            }
+
+            #app-interface {
+                flex-direction: column;
+                gap: 15px;
+                flex: 1;
+            }
+
+            .users-panel {
+                flex: none;
+                max-height: 45vh;
+            }
+
+            .chat-panel {
+                flex: 1;
+                min-height: 250px;
+            }
+
+            .action-buttons button {
+                font-size: 12px;
+                padding: 10px 5px;
+            }
+        }
+    </style>
 </head>
 <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+
+    <div class="card">
+        <h2 id="main-title">🔊 Ses Odası</h2>
+
+        <div id="login-form">
+            <input type="text" id="username" placeholder="Adın (örn: Emir)">
+            <input type="text" id="roomname" placeholder="Oda Adı (örn: muhabbet)">
+            <button onclick="joinRoom()">Odaya Katıl / Oluştur</button>
+            <div id="status">Bağlantı bekleniyor...</div>
+        </div>
+
+        <div id="video-container"></div>
+
+        <div id="app-interface">
+            <!-- Sol / Üst Panel: Kullanıcılar -->
+            <div class="users-panel">
+                <div style="margin-bottom: 10px; color:#949ba4; font-size: 13px; font-weight: bold;">ODADAKİLER</div>
+                <div id="user-items"></div>
+
+                <div class="action-buttons">
+                    <button id="mute-btn" class="mute-btn" onclick="toggleMute()">Mikrofon</button>
+                    <button id="share-btn" class="share-btn" onclick="toggleScreenShare()">📺 Yayın</button>
+                    <button id="invite-btn" class="invite-btn" onclick="copyInviteLink()">🔗 Davet</button>
+                    <button class="leave-btn" onclick="leaveRoom()">🚪 Ayrıl</button>
+                </div>
+            </div>
+
+            <!-- Sağ / Alt Panel: Sohbet -->
+            <div class="chat-panel">
+                <div class="chat-messages" id="chat-messages">
+                    <div class="sys-msg">Odaya giriş yapıldı. Mesajlar uçtan uca şifrelidir.</div>
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="chat-input" placeholder="Mesaj yaz..." onkeypress="if(event.key === 'Enter') sendMessage()">
+                    <button onclick="sendMessage()">Gönder</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+                let room;
+                let isMuted = false;
+                let isSharingScreen = false;
+                let currentRoomName = "Lobi";
+                const userVolumes = {};
+                const audioElements = {};
+
+                window.addEventListener('DOMContentLoaded', () => {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const roomParam = urlParams.get('room');
+                    if (roomParam) {
+                        const roomInput = document.getElementById('roomname');
+                        roomInput.value = roomParam;
+                        roomInput.readOnly = true;
+                        roomInput.style.opacity = '0.6';
+                        document.getElementById('main-title').innerText = `🔊 ${roomParam} Odasına Davetlisin`;
+                    }
+                });
+
+                function copyInviteLink() {
+                    const inviteUrl = `${window.location.origin}?room=${encodeURIComponent(currentRoomName)}`;
+                    navigator.clipboard.writeText(inviteUrl).then(() => {
+                        const btn = document.getElementById('invite-btn');
+                        btn.innerText = "✅ Kopyalandı!";
+                        setTimeout(() => { btn.innerText = "🔗 Davet"; }, 2000);
+                    });
+                }
+
+                async function joinRoom() {
+                    const username = document.getElementById('username').value.trim();
+                    currentRoomName = document.getElementById('roomname').value.trim() || "Lobi";
+                    if (!username) return alert("Lütfen adınızı girin!");
+
+                    document.getElementById('status').innerText = "Bağlanılıyor...";
+
+                    try {
+                        const response = await fetch(`/get-token?username=${encodeURIComponent(username)}&room=${encodeURIComponent(currentRoomName)}`);
+                        const data = await response.json();
+
+                        room = new LivekitClient.Room({
+                            adaptiveStream: true,
+                            dynacast: true
+                        });
+
+                        room.on(LivekitClient.RoomEvent.ActiveSpeakersChanged, (speakers) => {
+                            document.querySelectorAll('.user-item').forEach(el => el.classList.remove('speaking'));
+                            speakers.forEach(p => {
+                                const el = document.getElementById(`user-${p.identity}`);
+                                if(el) el.classList.add('speaking');
+                            });
+                        });
+
+                        room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+                            if (track.kind === LivekitClient.Track.Kind.Audio) {
+                                const audioElement = track.attach();
+                                audioElements[participant.identity] = audioElement;
+                                if(userVolumes[participant.identity] !== undefined) {
+                                    audioElement.volume = userVolumes[participant.identity];
+                                }
+                                document.body.appendChild(audioElement);
+                            } else if (track.kind === LivekitClient.Track.Kind.Video) {
+                                const videoElement = track.attach();
+                                videoElement.id = `video-${participant.identity}`;
+                                videoElement.setAttribute('playsinline', ''); // Mobilde tam ekrana fırlamasını engeller
+                                document.getElementById('video-container').appendChild(videoElement);
+                            }
+                        });
+
+                        room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+                            track.detach();
+                            if (track.kind === LivekitClient.Track.Kind.Audio) {
+                                delete audioElements[participant.identity];
+                            } else if (track.kind === LivekitClient.Track.Kind.Video) {
+                                const el = document.getElementById(`video-${participant.identity}`);
+                                if(el) el.remove();
+                            }
+                        });
+
+                        room.on(LivekitClient.RoomEvent.ParticipantConnected, (p) => {
+                            appendSysMsg(`🟢 ${p.identity.split('_')[0]} odaya katıldı.`);
+                            renderUsers();
+                        });
+
+                        room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (p) => {
+                            appendSysMsg(`🔴 ${p.identity.split('_')[0]} odadan ayrıldı.`);
+                            renderUsers();
+                        });
+
+                        room.on(LivekitClient.RoomEvent.DataReceived, (payload, participant) => {
+                            const msg = new TextDecoder().decode(payload);
+                            const senderName = participant ? participant.identity.split('_')[0] : "Bilinmeyen";
+                            appendChat(senderName, msg);
+                        });
+
+                        await room.connect(data.url, data.token);
+
+                        // GÜRÜLTÜ ENGELLEME İYİLEŞTİRMESİ
+                        // autoGainControl false yapıldı ki klavye sesini zorla yükseltmesin
+                        await room.localParticipant.setMicrophoneEnabled(true, {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: false
+                        });
+
+                        document.getElementById('login-form').style.display = "none";
+                        document.getElementById('app-interface').style.display = "flex";
+                        document.getElementById('main-title').innerText = `🔊 Oda: ${currentRoomName}`;
+                        renderUsers();
+
+                    } catch (error) {
+                        document.getElementById('status').innerText = "Hata: " + error.message;
+                    }
+                }
+
+                async function leaveRoom() {
+                    if (room) {
+                        await room.disconnect();
+                    }
+                    window.location.href = window.location.origin; // Sayfayı yenileyerek ana ekrana atar
+                }
+
+                function renderUsers() {
+                    const listDiv = document.getElementById('user-items');
+                    listDiv.innerHTML = '';
+
+                    const myName = document.getElementById('username').value.trim();
+                    listDiv.innerHTML += `
+                        <div class="user-item" id="user-${room.localParticipant.identity}">
+                            <span>👤 <strong>${myName}</strong></span>
+                        </div>
+                    `;
+
+                    room.remoteParticipants.forEach(p => {
+                        const identity = p.identity;
+                        const name = identity.split('_')[0] || "Misafir";
+                        const vol = userVolumes[identity] !== undefined ? userVolumes[identity] : 1;
+
+                        listDiv.innerHTML += `
+                            <div class="user-item" id="user-${identity}">
+                                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:120px;">🎙️ ${name}</span>
+                                <input type="range" min="0" max="1" step="0.01" value="${vol}" class="volume-slider" title="Sesi ayarla" oninput="changeVolume('${identity}', this.value)">
+                            </div>
+                        `;
+                    });
+                }
+
+                window.changeVolume = function(identity, value) {
+                    userVolumes[identity] = value;
+                    if(audioElements[identity]) audioElements[identity].volume = value;
+                };
+
+                async function toggleMute() {
+                    if (!room) return;
+                    isMuted = !isMuted;
+                    await room.localParticipant.setMicrophoneEnabled(!isMuted);
+                    const btn = document.getElementById('mute-btn');
+                    isMuted ? btn.classList.add('active') : btn.classList.remove('active');
+                }
+
+                async function toggleScreenShare() {
+                    if (!room) return;
+                    try {
+                        isSharingScreen = !isSharingScreen;
+                        await room.localParticipant.setScreenShareEnabled(isSharingScreen);
+                        const btn = document.getElementById('share-btn');
+                        isSharingScreen ? btn.classList.add('active') : btn.classList.remove('active');
+                    } catch (err) {
+                        isSharingScreen = false;
+                    }
+                }
+
+                window.sendMessage = function() {
+                    const input = document.getElementById('chat-input');
+                    const text = input.value.trim();
+                    if(!text || !room) return;
+                    room.localParticipant.publishData(new TextEncoder().encode(text), { reliable: true });
+                    appendChat("Sen", text);
+                    input.value = '';
+                }
+
+                function appendChat(sender, msg) {
+                    const box = document.getElementById('chat-messages');
+                    box.innerHTML += `<div class="chat-msg"><strong>${sender}:</strong> ${msg}</div>`;
+                    box.scrollTop = box.scrollHeight;
+                }
+
+                function appendSysMsg(msg) {
+                    const box = document.getElementById('chat-messages');
+                    box.innerHTML += `<div class="sys-msg">${msg}</div>`;
+                    box.scrollTop = box.scrollHeight;
+                }
+    </script>
 </body>
 </html>
