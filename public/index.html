@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Özel Sesli İletişim Merkezi</title>
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #1e1f22; color: #f2f3f5;
+            display: flex; align-items: center; justify-content: center;
+            height: 100vh; margin: 0;
+        }
+        .card {
+            background: #313338; padding: 2rem; border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4); width: 90%; max-width: 900px;
+            display: flex; flex-direction: column; gap: 20px;
+        }
+        h2 { margin-top: 0; margin-bottom: 0px; font-size: 22px; color: #fff; text-align: center; }
+        
+        #login-form { text-align: center; max-width: 350px; margin: 0 auto; }
+        input {
+            width: 100%; padding: 12px; margin: 8px 0; border-radius: 6px;
+            border: 1px solid #1e1f22; background: #1e1f22; color: #fff; outline: none; box-sizing: border-box;
+        }
+        input:focus { border-color: #5865f2; }
+        button {
+            width: 100%; padding: 12px; border-radius: 6px; border: none; cursor: pointer;
+            font-size: 15px; font-weight: 600; transition: 0.2s; background: #5865f2; color: white;
+        }
+        button:hover { background: #4752c4; }
+        
+        .action-buttons { display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
+        .mute-btn { background: #23a55a; flex: 1; min-width: 120px; }
+        .mute-btn.active { background: #da373c; }
+        .share-btn { background: #4f545c; flex: 1; min-width: 120px; }
+        .share-btn.active { background: #5865f2; }
+        .invite-btn { background: #00a8fc; flex: 1; min-width: 120px; }
+        .invite-btn:hover { background: #0090d8; }
+        .settings-btn { background: #7289da; flex: 1; min-width: 120px; }
+        .settings-btn:hover { background: #5b6eae; }
+
+        #app-interface { display: none; gap: 20px; flex-wrap: wrap; }
+        
+        #video-container { width: 100%; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+        #video-container video {
+            max-width: 100%; max-height: 500px; border-radius: 8px; background: #000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+
+        .users-panel { flex: 1; min-width: 250px; background: #2b2d31; padding: 15px; border-radius: 8px; }
+        .user-item {
+            display: flex; justify-content: space-between; align-items: center;
+            background: #1e1f22; padding: 10px 15px; border-radius: 8px; margin-bottom: 10px;
+            border: 2px solid transparent; transition: all 0.2s ease;
+        }
+        .user-item.speaking {
+            border-color: #23a55a; box-shadow: 0 0 12px rgba(35, 165, 90, 0.4); transform: translateY(-2px);
+        }
+        .volume-slider { width: 80px; cursor: pointer; }
+
+        .chat-panel { flex: 1.5; min-width: 300px; background: #2b2d31; padding: 15px; border-radius: 8px; display: flex; flex-direction: column; }
+        .chat-messages { flex: 1; height: 250px; overflow-y: auto; margin-bottom: 15px; font-size: 14px; }
+        .chat-msg { margin-bottom: 8px; line-height: 1.4; word-wrap: break-word;}
+        .chat-msg strong { color: #5865f2; }
+        .sys-msg { color: #949ba4; font-size: 12px; font-style: italic; }
+        .chat-input-area { display: flex; gap: 10px; }
+        .chat-input-area input { margin: 0; }
+        .chat-input-area button { width: auto; padding: 0 20px; }
+
+        #status { text-align: center; margin-top: 15px; font-size: 13px; color: #949ba4; }
+        
+        #settings-panel { display: none; background: #1e1f22; padding: 15px; border-radius: 8px; margin-top: 15px; }
+        select { width: 100%; padding: 8px; margin: 8px 0; background: #2b2d31; color: white; border: 1px solid #4f545c; border-radius: 4px; outline: none; }
+        .checkbox-container { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+        .checkbox-container input { width: auto; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2 id="main-title">🔊 Ses Odası</h2>
+        
+        <div id="login-form">
+            <input type="text" id="username" placeholder="Adın (örn: Emir)">
+            <input type="text" id="roomname" placeholder="Oda Adı (örn: muhabbet)">
+            <button onclick="joinRoom()">Odaya Katıl / Oluştur</button>
+            <div id="status">Bağlantı bekleniyor...</div>
+        </div>
+
+        <div id="video-container"></div>
+
+        <div id="app-interface">
+            <div class="users-panel">
+                <div style="margin-bottom: 15px; color:#949ba4; font-size: 14px;">Odadakiler ve Ses Ayarları</div>
+                <div id="user-items"></div>
+                
+                <div class="action-buttons">
+                    <button id="mute-btn" class="mute-btn" onclick="toggleMute()">Mikrofon</button>
+                    <button id="share-btn" class="share-btn" onclick="toggleScreenShare()">📺 Yayın</button>
+                    <button id="invite-btn" class="invite-btn" onclick="copyInviteLink()">🔗 Davet Linki</button>
+                    <button id="settings-btn" class="settings-btn" onclick="toggleSettings()">⚙️ Ayarlar</button>
+                </div>
+
+                <!-- Ayarlar Paneli -->
+                <div id="settings-panel">
+                    <h3 style="margin-top: 0; font-size: 14px; color: #fff;">Donanım Ayarları</h3>
+                    <label style="font-size: 13px; color: #949ba4;">Mikrofon Seç:</label>
+                    <select id="mic-select" onchange="changeMicrophone(this.value)">
+                        <option value="">Yükleniyor...</option>
+                    </select>
+
+                    <div class="checkbox-container">
+                        <input type="checkbox" id="noise-suppression-toggle" checked onchange="toggleNoiseSuppression(this.checked)">
+                        <label for="noise-suppression-toggle" style="font-size: 13px; color: #949ba4; cursor: pointer;">Arka Plan Gürültü Engelleme</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-panel">
+                <div class="chat-messages" id="chat-messages">
+                    <div class="sys-msg">Odaya giriş yapıldı. Mesajlar uçtan uca şifrelidir.</div>
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="chat-input" placeholder="Mesaj yaz..." onkeypress="if(event.key === 'Enter') sendMessage()">
+                    <button onclick="sendMessage()">Gönder</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let room;
+        let isMuted = false;
+        let isSharingScreen = false;
+        let currentRoomName = "Lobi"; 
+        const userVolumes = {}; 
+        const audioElements = {}; 
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomParam = urlParams.get('room');
+            if (roomParam) {
+                const roomInput = document.getElementById('roomname');
+                roomInput.value = roomParam;
+                roomInput.readOnly = true; 
+                roomInput.style.opacity = '0.6';
+                document.getElementById('main-title').innerText = `🔊 ${roomParam} Odasına Davetlisin`;
+            }
+        });
+
+        function copyInviteLink() {
+            const inviteUrl = `${window.location.origin}?room=${encodeURIComponent(currentRoomName)}`;
+            navigator.clipboard.writeText(inviteUrl).then(() => {
+                const btn = document.getElementById('invite-btn');
+                btn.innerText = "✅ Kopyalandı!";
+                setTimeout(() => { btn.innerText = "🔗 Davet Linki"; }, 2000);
+            });
+        }
+
+        async function joinRoom() {
+            const username = document.getElementById('username').value.trim();
+            currentRoomName = document.getElementById('roomname').value.trim() || "Lobi"; 
+            if (!username) return alert("Lütfen adınızı girin!");
+
+            document.getElementById('status').innerText = "Bağlanılıyor...";
+
+            try {
+                const response = await fetch(`/get-token?username=${encodeURIComponent(username)}&room=${encodeURIComponent(currentRoomName)}`);
+                const data = await response.json();
+
+                // Gürültü engelleme checkbox'ının başlangıç değerini alıyoruz
+                const isNoiseSuppressionOn = document.getElementById('noise-suppression-toggle').checked;
+
+                room = new LivekitClient.Room({ 
+                    adaptiveStream: true, 
+                    dynacast: true,
+                    audioCaptureDefaults: {
+                        autoGainControl: true,
+                        echoCancellation: true,
+                        noiseSuppression: isNoiseSuppressionOn
+                    }
+                });
+
+                room.on(LivekitClient.RoomEvent.ActiveSpeakersChanged, (speakers) => {
+                    document.querySelectorAll('.user-item').forEach(el => el.classList.remove('speaking'));
+                    speakers.forEach(p => {
+                        const el = document.getElementById(`user-${p.identity}`);
+                        if(el) el.classList.add('speaking');
+                    });
+                });
+
+                room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+                    if (track.kind === LivekitClient.Track.Kind.Audio) {
+                        const audioElement = track.attach();
+                        audioElements[participant.identity] = audioElement;
+                        if(userVolumes[participant.identity] !== undefined) {
+                            audioElement.volume = userVolumes[participant.identity];
+                        }
+                        document.body.appendChild(audioElement);
+                    } else if (track.kind === LivekitClient.Track.Kind.Video) {
+                        const videoElement = track.attach();
+                        videoElement.id = `video-${participant.identity}`;
+                        document.getElementById('video-container').appendChild(videoElement);
+                    }
+                });
+
+                room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+                    track.detach();
+                    if (track.kind === LivekitClient.Track.Kind.Audio) {
+                        delete audioElements[participant.identity];
+                    } else if (track.kind === LivekitClient.Track.Kind.Video) {
+                        const el = document.getElementById(`video-${participant.identity}`);
+                        if(el) el.remove();
+                    }
+                });
+
+                room.on(LivekitClient.RoomEvent.ParticipantConnected, (p) => {
+                    appendSysMsg(`${p.identity.split('_')[0]} odaya katıldı.`);
+                    renderUsers();
+                });
+
+                room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (p) => {
+                    appendSysMsg(`${p.identity.split('_')[0]} odadan ayrıldı.`);
+                    renderUsers();
+                });
+
+                room.on(LivekitClient.RoomEvent.DataReceived, (payload, participant) => {
+                    const msg = new TextDecoder().decode(payload);
+                    const senderName = participant ? participant.identity.split('_')[0] : "Bilinmeyen";
+                    appendChat(senderName, msg);
+                });
+
+                await room.connect(data.url, data.token);
+                await room.localParticipant.setMicrophoneEnabled(true);
+
+                document.getElementById('login-form').style.display = "none";
+                document.getElementById('app-interface').style.display = "flex";
+                document.getElementById('main-title').innerText = `🔊 Oda: ${currentRoomName}`;
+                renderUsers();
+
+            } catch (error) {
+                document.getElementById('status').innerText = "Hata: " + error.message;
+            }
+        }
+
+        function renderUsers() {
+            const listDiv = document.getElementById('user-items');
+            listDiv.innerHTML = '';
+            
+            const myName = document.getElementById('username').value.trim();
+            listDiv.innerHTML += `
+                <div class="user-item" id="user-${room.localParticipant.identity}">
+                    <span>👤 <strong>${myName}</strong> (Sen)</span>
+                </div>
+            `;
+
+            room.remoteParticipants.forEach(p => {
+                const identity = p.identity;
+                const name = identity.split('_')[0] || "Misafir";
+                const vol = userVolumes[identity] !== undefined ? userVolumes[identity] : 1;
+                
+                listDiv.innerHTML += `
+                    <div class="user-item" id="user-${identity}">
+                        <span>🎙️ ${name}</span>
+                        <input type="range" min="0" max="1" step="0.01" value="${vol}" class="volume-slider" title="Sesi ayarla" oninput="changeVolume('${identity}', this.value)">
+                    </div>
+                `;
+            });
+        }
+
+        window.changeVolume = function(identity, value) {
+            userVolumes[identity] = value;
+            if(audioElements[identity]) audioElements[identity].volume = value;
+        };
+
+        async function toggleMute() {
+            if (!room) return;
+            isMuted = !isMuted;
+            await room.localParticipant.setMicrophoneEnabled(!isMuted);
+            const btn = document.getElementById('mute-btn');
+            isMuted ? btn.classList.add('active') : btn.classList.remove('active');
+        }
+
+        async function toggleScreenShare() {
+            if (!room) return;
+            try {
+                isSharingScreen = !isSharingScreen;
+                await room.localParticipant.setScreenShareEnabled(isSharingScreen);
+                const btn = document.getElementById('share-btn');
+                isSharingScreen ? btn.classList.add('active') : btn.classList.remove('active');
+            } catch (err) {
+                console.error("Ekran paylaşımı hatası:", err);
+                isSharingScreen = false;
+            }
+        }
+
+        // AYARLAR VE GÜRÜLTÜ ENGELLEME İŞLEMLERİ
+        async function toggleSettings() {
+            const panel = document.getElementById('settings-panel');
+            panel.style.display = panel.style.display === "none" ? "block" : "none";
+            
+            if (panel.style.display === "block" && room) {
+                try {
+                    const devices = await LivekitClient.Room.getLocalDevices('audioinput');
+                    const select = document.getElementById('mic-select');
+                    select.innerHTML = '';
+                    
+                    devices.forEach(device => {
+                        const option = document.createElement('option');
+                        option.value = device.deviceId;
+                        option.text = device.label || `Mikrofon ${select.length + 1}`;
+                        select.appendChild(option);
+                    });
+                } catch (err) {
+                    console.error("Mikrofonlar listelenemedi:", err);
+                }
+            }
+        }
+
+        async function changeMicrophone(deviceId) {
+            if (room) {
+                await room.switchActiveDevice('audioinput', deviceId);
+            }
+        }
+
+        async function toggleNoiseSuppression(isEnabled) {
+            if (room && room.localParticipant && !isMuted) {
+                // Mikrofonu anlık kapatıp yeni gürültü engelleme ayarıyla tekrar açıyoruz
+                await room.localParticipant.setMicrophoneEnabled(false);
+                await room.localParticipant.setMicrophoneEnabled(true, {
+                    noiseSuppression: isEnabled,
+                    echoCancellation: true,
+                    autoGainControl: true
+                });
+            }
+        }
+
+        window.sendMessage = function() {
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+            if(!text || !room) return;
+            room.localParticipant.publishData(new TextEncoder().encode(text), { reliable: true });
+            appendChat("Sen", text);
+            input.value = ''; 
+        };
+
+        function appendChat(sender, msg) {
+            const box = document.getElementById('chat-messages');
+            box.innerHTML += `<div class="chat-msg"><strong>${sender}:</strong> ${msg}</div>`;
+            box.scrollTop = box.scrollHeight; 
+        }
+
+        function appendSysMsg(msg) {
+            const box = document.getElementById('chat-messages');
+            box.innerHTML += `<div class="sys-msg">${msg}</div>`;
+            box.scrollTop = box.scrollHeight;
+        }
+    </script>
+</body>
+</html>
