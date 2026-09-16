@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { LiveKitRoom } from '@livekit/components-react';
 import AudioRoom from './AudioRoom';
 import '@livekit/components-styles';
@@ -45,7 +45,11 @@ export default function App() {
     return (
       <LiveKitRoom
         video={false}
-        audio={true}
+        audio={{
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: false // KLAVYE SESİNİN ZORLA YÜKSELTİLMESİNİ ENGELLER
+        }}
         token={token}
         serverUrl={LIVEKIT_URL}
         onDisconnected={() => setToken('')}
