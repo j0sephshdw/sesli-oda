@@ -37,14 +37,43 @@ export default function AudioRoom({ roomName, onLeave }) {
   
   const [isDeafened, setIsDeafened] = useState(false);
   const [isHandRaised, setIsHandRaised] = useState(false);
+  const [isAfk, setIsAfk] = useState(false); // YENİ: AFK Durumu
   const [floatingEmojis, setFloatingEmojis] = useState([]);
   
-  // YENİ: Tiyatro Modu (Sohbeti Gizle/Aç)
   const [isChatVisible, setIsChatVisible] = useState(true);
+  
+  // YENİ: Yazıyor... Animasyonu için state
+  const [typing, setTyping] = useState({});
 
   const processorRef = useRef(null);
   const stageRef = useRef(null);
   const prevChatCount = useRef(0);
+
+  // MİKROFON AÇ/KAPAT SES EFEKTİ (YENİ)
+  const playMicTone = (isMuting) => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') ctx.resume();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine';
+      
+      if (isMuting) {
+        osc.frequency.setValueAtTime(400, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.15);
+      } else {
+        osc.frequency.setValueAtTime(200, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.15);
+      }
+      
+      gain.gain.setValueAtTime(0.05, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+      osc.start(); osc.stop(ctx.currentTime + 0.2);
+    } catch(e) {}
+  };
 
   const playTone = (type) => {
     try {
@@ -52,11 +81,9 @@ export default function AudioRoom({ roomName, onLeave }) {
       if (!AudioCtx) return;
       const ctx = new AudioCtx();
       if (ctx.state === 'suspended') ctx.resume();
-
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
+      osc.connect(gain); gain.connect(ctx.destination);
       osc.type = 'sine';
       
       if (type === 'join') {
@@ -71,7 +98,6 @@ export default function AudioRoom({ roomName, onLeave }) {
         gain.gain.setValueAtTime(0.01, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
       } else if (type === 'screen_share') {
-        // Ekran paylaşımı için özel dijital bildirim
         osc.type = 'square';
         osc.frequency.setValueAtTime(440, ctx.currentTime);
         osc.frequency.setValueAtTime(880, ctx.currentTime + 0.1);
@@ -83,9 +109,7 @@ export default function AudioRoom({ roomName, onLeave }) {
          gain.gain.setValueAtTime(0.02, ctx.currentTime);
          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
       }
-
-      osc.start();
-      osc.stop(ctx.currentTime + (type === 'screen_share' ? 0.2 : 0.15));
+      osc.start(); osc.stop(ctx.currentTime + (type === 'screen_share' ? 0.2 : 0.15));
     } catch(e) {}
   };
 
@@ -93,6 +117,14 @@ export default function AudioRoom({ roomName, onLeave }) {
     if (msg.trim()) {
       send(msg);
       setMsg('');
+    }
+  };
+
+  const handleTyping = (e) => {
+    setMsg(e.target.value);
+    if (room?.localParticipant) {
+      const data = JSON.stringify({ type: 'TYPING', name: (localParticipant.name || localParticipant.identity).split('_')[0] });
+      room.localParticipant.publishData(new TextEncoder().encode(data), { reliable: false });
     }
   };
 
@@ -105,10 +137,25 @@ export default function AudioRoom({ roomName, onLeave }) {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, localParticipant]);
 
-  // Yeni Ekran Paylaşımı Bildirimi
   useEffect(() => {
     if(screenTracks.length > 0) playTone('screen_share');
   }, [screenTracks.length]);
+
+  // Yazıyor... durumunu temizleyen döngü (3 saniyede bir eski yazanları siler)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setTyping(prev => {
+        const next = { ...prev };
+        let changed = false;
+        for (let user in next) {
+          if (now - next[user] > 3000) { delete next[user]; changed = true; }
+        }
+        return changed ? next : prev;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const setupNoiseCancellation = async () => {
@@ -150,6 +197,7 @@ export default function AudioRoom({ roomName, onLeave }) {
         const str = new TextDecoder().decode(payload);
         const data = JSON.parse(str);
         if (data.type === 'EMOJI_REACTION') spawnFloatingEmoji(data.emoji);
+        if (data.type === 'TYPING') setTyping(prev => ({ ...prev, [data.name]: Date.now() }));
       } catch(e) {}
     };
 
@@ -190,6 +238,13 @@ export default function AudioRoom({ roomName, onLeave }) {
     setIsHandRaised(nextState);
     localParticipant?.setAttributes({ handRaised: nextState ? 'true' : 'false' });
     if (nextState) sendEmojiReaction('✋');
+  };
+
+  // YENİ: AFK Fonksiyonu
+  const toggleAfk = () => {
+    const nextState = !isAfk;
+    setIsAfk(nextState);
+    localParticipant?.setAttributes({ afk: nextState ? 'true' : 'false' });
   };
 
   const copyInvite = () => {
@@ -252,6 +307,9 @@ export default function AudioRoom({ roomName, onLeave }) {
 
   const formatTime = (timestamp) => new Date(timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
+  // Aktif yazan kişilerin listesi
+  const activeTypers = Object.keys(typing).filter(name => name !== (localParticipant?.name || localParticipant?.identity || '').split('_')[0]);
+
   return (
     <div className="custom-room-layout">
       <div className="floating-emoji-container">
@@ -291,21 +349,21 @@ export default function AudioRoom({ roomName, onLeave }) {
             {participants.map((p) => {
               const isUserDeafened = p.attributes?.deafened === 'true';
               const isUserHandRaised = p.attributes?.handRaised === 'true';
+              const isUserAfk = p.attributes?.afk === 'true';
               const displayName = (p.name || p.identity || 'Misafir').split('_')[0];
               const isUserSharingScreen = p.isScreenShareEnabled;
-              // Kamera Açık mı Kontrolü (Hata düzeltildi)
               const isCamOn = p.isCameraEnabled; 
-              // Ayna efekti sadece bize özel olsun
               const isMirror = isCamOn && p.identity === localParticipant?.identity;
 
               return (
-                <div key={p.identity} className={`voice-user-card ${p.isSpeaking ? 'speaking' : ''}`} onDoubleClick={isCamOn ? toggleCardFullScreen : undefined}>
+                <div key={p.identity} className={`voice-user-card ${p.isSpeaking ? 'speaking' : ''} ${isUserAfk ? 'afk-mode' : ''}`} onDoubleClick={isCamOn ? toggleCardFullScreen : undefined}>
                   <div className="quality-indicator"><ConnectionQualityIndicator participant={p} /></div>
                   
                   {isUserHandRaised && <div className="hand-raised-badge">✋</div>}
                   {isUserSharingScreen && <div className="broadcaster-badge">🔴 Yayında</div>}
+                  {/* AFK ROZETİ */}
+                  {isUserAfk && <div className="afk-badge">☕ AFK</div>}
 
-                  {/* DİNAMİK AVATAR VEYA KAMERA */}
                   {isCamOn ? (
                     <VideoTrack trackRef={{ participant: p, source: Track.Source.Camera }} className={`user-video ${isMirror ? 'mirror' : ''}`} />
                   ) : (
@@ -327,7 +385,6 @@ export default function AudioRoom({ roomName, onLeave }) {
                      </div>
                   )}
                   
-                  {/* YENİ: KUSURSUZ HOVER MENÜSÜ */}
                   {(p.identity !== localParticipant?.identity || isCamOn) && (
                     <div className="card-hover-overlay">
                       {isCamOn && (
@@ -336,8 +393,6 @@ export default function AudioRoom({ roomName, onLeave }) {
                           <button onClick={toggleCardFullScreen} title="Tam Ekran Yap">⛶ Tam Ekran</button>
                         </div>
                       )}
-
-                      {/* Başkasının sesini kısmak için Hover */}
                       {p.identity !== localParticipant?.identity && (
                         <div className="vol-slider-wrapper">
                           <span>Kullanıcı Sesi</span>
@@ -364,12 +419,19 @@ export default function AudioRoom({ roomName, onLeave }) {
             <button onClick={() => sendEmojiReaction('🔥')} className="action-btn">🔥</button>
             <button onClick={() => sendEmojiReaction('👍')} className="action-btn">👍</button>
             <button onClick={() => sendEmojiReaction('😂')} className="action-btn">😂</button>
-            <button onClick={() => sendEmojiReaction('🎉')} className="action-btn">🎉</button>
-            <button onClick={toggleHandRaise} className={`action-btn ${isHandRaised ? 'active-hand' : ''}`}>✋</button>
+            <button onClick={toggleHandRaise} className={`action-btn ${isHandRaised ? 'active-hand' : ''}`} title="El Kaldır">✋</button>
+            <button onClick={toggleAfk} className={`action-btn ${isAfk ? 'active-hand' : ''}`} title="AFK Modu">☕</button>
           </div>
           
           <div className="main-controls">
-            <button className={`ctrl-btn ${!isMicrophoneEnabled ? 'muted' : 'active'}`} onClick={() => localParticipant?.setMicrophoneEnabled(!isMicrophoneEnabled)}>
+            <button 
+              className={`ctrl-btn ${!isMicrophoneEnabled ? 'muted' : 'active'}`} 
+              onClick={() => {
+                const nextState = !isMicrophoneEnabled;
+                playMicTone(!nextState); // Ses efekti
+                localParticipant?.setMicrophoneEnabled(nextState);
+              }}
+            >
               {isMicrophoneEnabled ? '🎙️ Açık' : '🔇 Kapalı'}
             </button>
             <button className={`ctrl-btn ${isDeafened ? 'muted' : ''}`} onClick={toggleDeafen}>
@@ -383,7 +445,8 @@ export default function AudioRoom({ roomName, onLeave }) {
               {isCameraEnabled ? '📹 Kamerayı Kapat' : '📹 Kamera Aç'}
             </button>
 
-            <button className={`ctrl-btn ${isScreenShareEnabled ? 'active' : ''}`} onClick={() => localParticipant?.setScreenShareEnabled(!isScreenShareEnabled)}>
+            {/* YENİ: Ekran Paylaşımı yaparken "audio: true" ile sistem/oyun sesi gönderilir */}
+            <button className={`ctrl-btn ${isScreenShareEnabled ? 'active' : ''}`} onClick={() => localParticipant?.setScreenShareEnabled(!isScreenShareEnabled, { audio: true })}>
               📺 {isScreenShareEnabled ? 'Yayını Kapat' : 'Ekran Paylaş'}
             </button>
             <button className="leave-btn" onClick={handleLeaveRoom}>🚪 Ayrıl</button>
@@ -391,7 +454,6 @@ export default function AudioRoom({ roomName, onLeave }) {
         </footer>
       </div>
 
-      {/* TİYATRO MODU (Sohbet Gizlenmişse Bu Kısım Ekranda Gözükmez) */}
       {isChatVisible && (
         <div className="custom-chat-panel">
           <div className="chat-header">💬 Sohbet</div>
@@ -408,10 +470,19 @@ export default function AudioRoom({ roomName, onLeave }) {
             ))}
             <div ref={chatEndRef} />
           </div>
+          
+          {/* YAZIYOR... GÖSTERGESİ */}
+          {activeTypers.length > 0 && (
+            <div className="typing-indicator">
+              <span className="typing-dots"><span>.</span><span>.</span><span>.</span></span>
+              {activeTypers.join(', ')} yazıyor
+            </div>
+          )}
+
           <div className="chat-input-area">
             <input 
               value={msg} 
-              onChange={e => setMsg(e.target.value)} 
+              onChange={handleTyping} 
               onKeyDown={e => e.key === 'Enter' && handleSendMessage()} 
               placeholder="Mesaj..." 
             />
