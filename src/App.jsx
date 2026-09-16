@@ -3,6 +3,10 @@ import { LiveKitRoom } from '@livekit/components-react';
 import AudioRoom from './AudioRoom';
 import '@livekit/components-styles';
 
+// DİKKAT: Render'daki Environment Variables kısmında VITE_LIVEKIT_URL tanımlı olmalı.
+// Veya 'wss://...' yazan yere kendi LiveKit linkini doğrudan yapıştırabilirsin.
+const LIVEKIT_URL = import.meta.env.VITE_LIVEKIT_URL || 'wss://kendi-livekit-url-adresini-buraya-yaz.livekit.cloud';
+
 export default function App() {
   const [roomName, setRoomName] = useState('');
   const [participantName, setParticipantName] = useState('');
@@ -11,7 +15,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [isInvite, setIsInvite] = useState(false);
 
-  // URL'den davet linkini kontrol et
+  // Sayfa açıldığında linkte "room=oda_adi" var mı diye bakar
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
@@ -40,7 +44,7 @@ export default function App() {
 
       const data = await response.json();
 
-      if (!response.ok) throw new Error(data.error || 'Token alınamadı.');
+      if (!response.ok) throw new Error(data.error || 'Bilet alınamadı.');
       
       setToken(data.token);
     } catch (err) {
@@ -57,20 +61,31 @@ export default function App() {
     setRoomName('');
   };
 
+  // URL hatasını ekrana bas (Senin aldığın hatanın çözümü)
+  if (token && (!LIVEKIT_URL || LIVEKIT_URL.includes('kendi-livekit-url'))) {
+    return (
+      <div style={{color:'white', padding:'20px', textAlign:'center', marginTop:'50px'}}>
+        <h2>🛑 Kritik Hata: LiveKit URL Bulunamadı</h2>
+        <p>Lütfen Render panelinden <b>VITE_LIVEKIT_URL</b> ayarını ekleyin veya App.jsx içindeki URL'yi kendi <i>wss://</i> linkinizle değiştirin.</p>
+      </div>
+    );
+  }
+
+  // Odayı Yükle
   if (token) {
     return (
       <LiveKitRoom
         video={false}
         audio={true}
         token={token}
-        serverUrl={import.meta.env.VITE_LIVEKIT_URL}
+        serverUrl={LIVEKIT_URL}
         onDisconnected={handleDisconnect}
         data-lk-theme="default"
         options={{
           audioCaptureDefaults: {
             autoGainControl: true,
             echoCancellation: true,
-            noiseSuppression: true
+            noiseSuppression: true // Klavye ve dip sesleri engeller
           }
         }}
       >
@@ -79,6 +94,7 @@ export default function App() {
     );
   }
 
+  // Giriş Ekranını Yükle
   return (
     <div className="join-container">
       <div className="join-card">
@@ -92,6 +108,7 @@ export default function App() {
               type="text"
               value={participantName}
               onChange={(e) => setParticipantName(e.target.value)}
+              maxLength={15}
               required
             />
           </div>
@@ -103,6 +120,7 @@ export default function App() {
               onChange={(e) => setRoomName(e.target.value)}
               readOnly={isInvite}
               style={{ opacity: isInvite ? 0.6 : 1 }}
+              maxLength={20}
               required
             />
           </div>

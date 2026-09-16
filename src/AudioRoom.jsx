@@ -2,7 +2,7 @@ import React from 'react';
 import {
   RoomAudioRenderer,
   ControlBar,
-  TrackLoop, // HATA BURADAYDI: ParticipantLoop yerine TrackLoop kullanmalıyız
+  TrackLoop,
   ParticipantTile,
   Chat,
   useTracks,
@@ -10,11 +10,10 @@ import {
 } from '@livekit/components-react';
 import { Track } from 'livekit-client';
 
-export default function AudioRoom({ roomName, onLeave }) {
+export default function AudioRoom({ roomName }) {
   const room = useRoomContext();
   
-  // Sadece mikrofon ve ekran paylaşımı parçalarını alıyoruz.
-  // withPlaceholder: true sayesinde kamerası kapalı olanların profil kutusu görünür!
+  // Mikrofonları ve Ekran Paylaşımlarını ekrana çiz
   const tracks = useTracks(
     [
       { source: Track.Source.Microphone, withPlaceholder: true },
@@ -31,21 +30,24 @@ export default function AudioRoom({ roomName, onLeave }) {
 
   return (
     <div className="custom-room-layout">
-      {/* Sol Panel: Kullanıcılar, Ekran Paylaşımı ve Kontroller */}
+      {/* SOL PANEL (Kişiler ve Kontroller) */}
       <div className="main-panel">
         <header className="room-header">
-          <h3>🔊 Oda: {roomName}</h3>
+          <div className="header-info">
+            <h3>🔊 Oda: {roomName}</h3>
+            <span className="live-badge">🔴 Canlı</span>
+          </div>
           <button onClick={copyInvite} className="invite-btn">🔗 Davet Linki Kopyala</button>
         </header>
 
-        {/* Katılımcıların ve Ekran Paylaşımlarının Listelendiği Alan */}
+        {/* Kişilerin Kutucukları */}
         <div className="participants-grid">
           <TrackLoop tracks={tracks}>
             <ParticipantTile />
           </TrackLoop>
         </div>
 
-        {/* Mikrofon, Yayın Açma ve Ayrılma Butonları */}
+        {/* Butonlar */}
         <footer className="room-controls">
           <ControlBar 
             controls={{ microphone: true, screenShare: true, camera: false, chat: false }} 
@@ -56,12 +58,11 @@ export default function AudioRoom({ roomName, onLeave }) {
         </footer>
       </div>
 
-      {/* Sağ Panel: Yazılı Sohbet */}
+      {/* SAĞ PANEL (Sohbet) */}
       <div className="chat-panel">
         <Chat />
       </div>
 
-      {/* Arka planda seslerin çalmasını sağlayan zorunlu bileşen */}
       <RoomAudioRenderer />
     </div>
   );
