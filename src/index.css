@@ -193,59 +193,66 @@ body {
         border-radius: 12px;
     }
 
+/* EKRANI DOLDURAN DİNAMİK GRİD (IZGARA) YAPISI */
 .voice-users-grid {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    /* Ekranda kaç kişi varsa kartları ona göre otomatik büyütüp küçültür */
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
     gap: 24px;
-    justify-content: center;
-    align-items: center;
-    max-width: 1000px;
-    margin: 0 auto;
     width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    align-items: center;
+    justify-items: center;
     transition: all 0.3s ease;
 }
 
-/* Ekran paylaşımı varken grid düzeni */
+/* EKRAN PAYLAŞIMI VARKEN KARTLARI KÜÇÜLTÜP YANA DİZME */
 .dynamic-view-area.has-screen .voice-users-grid {
+    display: flex;
     flex-wrap: nowrap;
     overflow-x: auto;
     justify-content: flex-start;
-    padding-bottom: 10px;
+    padding-bottom: 15px;
 }
 
 .dynamic-view-area.has-screen .voice-user-card {
+    width: 160px;
+    height: 120px;
     flex-shrink: 0;
-    width: 120px;
-    height: 140px;
 }
 
     .dynamic-view-area.has-screen .voice-user-card .avatar {
         font-size: 40px;
     }
 
+/* DİSCORD TARZI TOK VE BÜYÜK KULLANICI KARTI */
 .voice-user-card {
-    width: 180px;
-    height: 200px;
+    width: 100%;
+    max-width: 320px;
+    height: 240px; /* Kartları daha büyük ve dikdörtgen yaptık */
     background: #232428;
-    border-radius: 20px;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+    border-radius: 12px; /* Discord'un köşeleri daha az yuvarlaktır */
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    border: 2px solid rgba(255, 255, 255, 0.05);
-    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
     position: relative;
+    overflow: hidden; /* Sınırların dışına taşmayı engeller */
 }
 
     .voice-user-card:hover {
         transform: translateY(-4px);
     }
 
+    /* KART İÇİ AVATAR BÜYÜTÜLDÜ */
     .voice-user-card .avatar {
-        font-size: 55px;
-        margin-bottom: 10px;
-        transition: 0.2s;
+        font-size: 70px; /* Avatar daha görünür kılındı */
+        margin-bottom: 15px;
+        transition: transform 0.2s;
     }
 
     .voice-user-card .name {
@@ -266,10 +273,11 @@ body {
         border-radius: 10px;
     }
 
+    /* KONUŞMA DURUMU (YEŞİL ÇERÇEVE) */
     .voice-user-card.speaking {
         border-color: #23a55a;
-        box-shadow: 0 0 25px rgba(35, 165, 90, 0.6);
-        animation: pulseGlow 1.5s infinite alternate;
+        box-shadow: 0 0 0 4px rgba(35, 165, 90, 0.2); /* Dışarıya doğru Discord stili parlama */
+        animation: none; /* Titreme animasyonunu kaldırdık, daha profesyonel duruyor */
     }
 
         .voice-user-card.speaking .avatar {
@@ -763,3 +771,94 @@ body {
     ::-webkit-scrollbar-thumb:hover {
         background: #5865f2;
     }
+/* ==========================================================================
+   10. TAM EKRAN VE PENCERE İÇİ (PiP) KONTROLLERİ
+   ========================================================================== */
+.screen-share-stage {
+    position: relative;
+    cursor: pointer; /* Çift tıklanabilir olduğunu hissettirir */
+}
+
+    /* Tam ekrana geçildiğinde arka planı siyah yap ve tam oturt */
+    .screen-share-stage:fullscreen {
+        background: #000;
+        width: 100vw;
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+        .screen-share-stage:fullscreen .lk-participant-tile {
+            width: 100%;
+            height: 100%;
+            border-radius: 0;
+        }
+
+/* Ekranın Üstündeki Şeffaf Kontrol Paneli */
+.screen-overlay-actions {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    display: flex;
+    gap: 10px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: 50;
+}
+
+/* Farenle üzerine gelince butonlar görünür olur */
+.screen-share-stage:hover .screen-overlay-actions {
+    opacity: 1;
+}
+
+.screen-overlay-actions button {
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+    .screen-overlay-actions button:hover {
+        background: rgba(88, 101, 242, 0.9);
+        border-color: #5865f2;
+        transform: translateY(-2px);
+    }
+
+/* ==========================================================================
+   11. YAYINCI ROZETİ (BROADCASTER BADGE)
+   ========================================================================== */
+.broadcaster-badge {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background: #da373c;
+    color: white;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 4px 10px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(218, 55, 60, 0.5);
+    z-index: 5;
+    animation: pulseGlowRed 2s infinite alternate;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+@keyframes pulseGlowRed {
+    from {
+        box-shadow: 0 0 10px rgba(218, 55, 60, 0.4);
+    }
+
+    to {
+        box-shadow: 0 0 20px rgba(218, 55, 60, 0.8);
+    }
+}

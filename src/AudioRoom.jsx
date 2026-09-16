@@ -32,8 +32,11 @@ export default function AudioRoom({ roomName, onLeave }) {
   const [floatingEmojis, setFloatingEmojis] = useState([]);
 
   const processorRef = useRef(null);
+  
+  // YENİ: Ekran paylaşımı referansı
+  const stageRef = useRef(null);
 
-  // MESAJ GÖNDERME FONKSİYONU
+  // MESAJ GÖNDERME
   const handleSendMessage = () => {
     if (msg.trim()) {
       send(msg);
@@ -41,12 +44,11 @@ export default function AudioRoom({ roomName, onLeave }) {
     }
   };
 
-  // Otomatik sohbet kaydırma
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  // Gürültü Engelleme (Krisp AI) Yönetimi
+  // Gürültü Engelleme (Krisp AI)
   useEffect(() => {
     const setupNoiseCancellation = async () => {
       if (!isMicrophoneEnabled) {
@@ -61,9 +63,7 @@ export default function AudioRoom({ roomName, onLeave }) {
 
       try {
         setNoiseStatus('🛡️ Başlatılıyor...');
-        const currentProcessor = KrispNoiseFilter({
-  assetsLocation: '/krisp'
-});
+        const currentProcessor = KrispNoiseFilter({ assetsLocation: '/krisp' });
         processorRef.current = currentProcessor;
         await track.setProcessor(currentProcessor);
         setIsNoiseCancellingActive(true);
@@ -83,7 +83,7 @@ export default function AudioRoom({ roomName, onLeave }) {
     };
   }, [isMicrophoneEnabled, localParticipant]);
 
-  // Ses Sinyalleri ve Olay Dinleyicileri
+  // Ses Sinyalleri ve Olaylar
   useEffect(() => {
     const playTone = (type) => {
       try {
@@ -178,9 +178,7 @@ export default function AudioRoom({ roomName, onLeave }) {
         setIsNoiseCancellingActive(false);
         setNoiseStatus('🛡️ Gürültü Engelleme (KAPALI)');
       } else {
-        const newProcessor = KrispNoiseFilter({
-  assetsLocation: '/krisp'
-});
+        const newProcessor = KrispNoiseFilter({ assetsLocation: '/krisp' });
         processorRef.current = newProcessor;
         await track.setProcessor(newProcessor);
         setIsNoiseCancellingActive(true);
@@ -194,11 +192,36 @@ export default function AudioRoom({ roomName, onLeave }) {
     onLeave();
   };
 
+  // YENİ: Tam Ekran ve PiP Fonksiyonları
+  const toggleFullScreen = () => {
+    if (!document.fullscreenElement) {
+      stageRef.current?.requestFullscreen().catch(err => console.error(err));
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  const togglePiP = async () => {
+    const videoEl = stageRef.current?.querySelector('video');
+    if (videoEl && document.pictureInPictureEnabled) {
+      try {
+        if (document.pictureInPictureElement) {
+          await document.exitPictureInPicture();
+        } else {
+          await videoEl.requestPictureInPicture();
+        }
+      } catch (err) {
+        console.error("PiP Hatası:", err);
+      }
+    } else {
+      alert("Tarayıcınız Pencere İçi (PiP) modunu desteklemiyor.");
+    }
+  };
+
   const formatTime = (timestamp) => new Date(timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
   return (
     <div className="custom-room-layout">
-      {/* YÜZEN EMOJİ ALANI */}
       <div className="floating-emoji-container">
         {floatingEmojis.map((item) => (
           <span key={item.id} className="floating-emoji" style={{ left: `${item.left}%` }}>{item.emoji}</span>
@@ -216,8 +239,14 @@ export default function AudioRoom({ roomName, onLeave }) {
         </header>
 
         <div className={`dynamic-view-area ${screenTracks.length > 0 ? 'has-screen' : ''}`}>
+          
+          {/* EKRAN PAYLAŞIM ALANI - GÜNCELLENDİ */}
           {screenTracks.length > 0 && (
-            <div className="screen-share-stage">
+            <div className="screen-share-stage" ref={stageRef} onDoubleClick={toggleFullScreen}>
+              <div className="screen-overlay-actions">
+                <button onClick={togglePiP} title="Pencere İçinde Aç">🗗 Pencere (PiP)</button>
+                <button onClick={toggleFullScreen} title="Tam Ekran Yap">⛶ Tam Ekran</button>
+              </div>
               <TrackLoop tracks={screenTracks}><ParticipantTile /></TrackLoop>
             </div>
           )}
@@ -227,12 +256,15 @@ export default function AudioRoom({ roomName, onLeave }) {
               const isUserDeafened = p.attributes?.deafened === 'true';
               const isUserHandRaised = p.attributes?.handRaised === 'true';
               const displayName = (p.name || p.identity || 'Misafir').split('_')[0];
+              const isUserSharingScreen = p.isScreenShareEnabled; // Yayıncı kontrolü
 
               return (
                 <div key={p.identity} className={`voice-user-card ${p.isSpeaking ? 'speaking' : ''}`}>
                   <div className="quality-indicator"><ConnectionQualityIndicator participant={p} /></div>
                   
                   {isUserHandRaised && <div className="hand-raised-badge">✋</div>}
+                  {/* YENİ: YAYINCI ROZETİ */}
+                  {isUserSharingScreen && <div className="broadcaster-badge">🔴 Yayında</div>}
 
                   <div className="avatar">👤</div>
                   <div className="name">{displayName}</div>
@@ -316,7 +348,6 @@ export default function AudioRoom({ roomName, onLeave }) {
         </div>
       </div>
 
-      {/* KİŞİSEL İMZA (SOL ALT KÖŞE + HARİKA GÖRÜNÜM) */}
       <div className="watermark-badge-left">
         ⚡ Made by <span>Hacıkopter</span>
       </div>
