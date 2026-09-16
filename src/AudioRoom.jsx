@@ -8,15 +8,24 @@ import {
   useTracks,
   TrackLoop,
   ParticipantTile,
-  ConnectionQualityIndicator
+  ConnectionQualityIndicator,
+  VideoTrack // YENİ: Kamera Görüntüsü İçin Eklendi
 } from '@livekit/components-react';
 import { Track, RoomEvent } from 'livekit-client';
 import { KrispNoiseFilter, isKrispNoiseFilterSupported } from '@livekit/krisp-noise-filter';
 
+// DİNAMİK RENK ÜRETİCİ (Discord Renk Paleti)
+const getAvatarColor = (name) => {
+  const colors = ['#5865F2', '#57F287', '#FEE75C', '#EB459E', '#ED4245', '#00a8fc'];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return colors[Math.abs(hash) % colors.length];
+};
+
 export default function AudioRoom({ roomName, onLeave }) {
   const room = useRoomContext();
   const participants = useParticipants(); 
-  const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant();
+  const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled, isCameraEnabled } = useLocalParticipant();
   const screenTracks = useTracks([Track.Source.ScreenShare]);
 
   const { send, chatMessages } = useChat();
@@ -32,11 +41,8 @@ export default function AudioRoom({ roomName, onLeave }) {
   const [floatingEmojis, setFloatingEmojis] = useState([]);
 
   const processorRef = useRef(null);
-  
-  // YENİ: Ekran paylaşımı referansı
   const stageRef = useRef(null);
 
-  // MESAJ GÖNDERME
   const handleSendMessage = () => {
     if (msg.trim()) {
       send(msg);
@@ -48,7 +54,6 @@ export default function AudioRoom({ roomName, onLeave }) {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  // Gürültü Engelleme (Krisp AI)
   useEffect(() => {
     const setupNoiseCancellation = async () => {
       if (!isMicrophoneEnabled) {
@@ -83,7 +88,6 @@ export default function AudioRoom({ roomName, onLeave }) {
     };
   }, [isMicrophoneEnabled, localParticipant]);
 
-  // Ses Sinyalleri ve Olaylar
   useEffect(() => {
     const playTone = (type) => {
       try {
@@ -192,7 +196,6 @@ export default function AudioRoom({ roomName, onLeave }) {
     onLeave();
   };
 
-  // YENİ: Tam Ekran ve PiP Fonksiyonları
   const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
       stageRef.current?.requestFullscreen().catch(err => console.error(err));
@@ -240,7 +243,6 @@ export default function AudioRoom({ roomName, onLeave }) {
 
         <div className={`dynamic-view-area ${screenTracks.length > 0 ? 'has-screen' : ''}`}>
           
-          {/* EKRAN PAYLAŞIM ALANI - GÜNCELLENDİ */}
           {screenTracks.length > 0 && (
             <div className="screen-share-stage" ref={stageRef} onDoubleClick={toggleFullScreen}>
               <div className="screen-overlay-actions">
@@ -256,38 +258,52 @@ export default function AudioRoom({ roomName, onLeave }) {
               const isUserDeafened = p.attributes?.deafened === 'true';
               const isUserHandRaised = p.attributes?.handRaised === 'true';
               const displayName = (p.name || p.identity || 'Misafir').split('_')[0];
-              const isUserSharingScreen = p.isScreenShareEnabled; // Yayıncı kontrolü
+              const isUserSharingScreen = p.isScreenShareEnabled;
+              const isCamOn = p.isCameraEnabled || p.getTrackPublication(Track.Source.Camera)?.track;
 
               return (
                 <div key={p.identity} className={`voice-user-card ${p.isSpeaking ? 'speaking' : ''}`}>
                   <div className="quality-indicator"><ConnectionQualityIndicator participant={p} /></div>
                   
                   {isUserHandRaised && <div className="hand-raised-badge">✋</div>}
-                  {/* YENİ: YAYINCI ROZETİ */}
                   {isUserSharingScreen && <div className="broadcaster-badge">🔴 Yayında</div>}
 
-                  <div className="avatar">👤</div>
-                  <div className="name">{displayName}</div>
+                  {/* DİNAMİK AVATAR VEYA KAMERA */}
+                  {isCamOn ? (
+                    <VideoTrack trackRef={{ participant: p, source: Track.Source.Camera }} className="user-video" />
+                  ) : (
+                    <div className="avatar" style={{ backgroundColor: getAvatarColor(displayName) }}>
+                      {displayName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+
+                  {/* KART ALTI DİSCORD BİLGİ BANDI */}
+                  <div className="card-footer">
+                    <span className="name">{displayName}</span>
+                    <span className="status-icons">
+                      {isUserDeafened ? '🎧' : !p.isMicrophoneEnabled ? '🔇' : ''}
+                    </span>
+                  </div>
                   
-                  {isUserDeafened ? (
-                    <div className="muted-badge deafened">🎧 Sağır</div>
-                  ) : !p.isMicrophoneEnabled ? (
-                    <div className="muted-badge">🔇 Sustu</div>
-                  ) : p.isSpeaking ? (
+                  {p.isSpeaking && (
                      <div className="waveform">
                        <span className="bar"></span><span className="bar"></span><span className="bar"></span>
                      </div>
-                  ) : null}
+                  )}
                   
+                  {/* AKILLI HOVER SES AYARI */}
                   {p.identity !== localParticipant?.identity && (
-                    <input 
-                      type="range" min="0" max="1" step="0.01" defaultValue="1" 
-                      className="vol-slider" title="Sesi ayarla"
-                      onChange={(e) => {
-                        const audioTrack = p.getTrackPublication(Track.Source.Microphone)?.track;
-                        if (audioTrack && audioTrack.setVolume) audioTrack.setVolume(parseFloat(e.target.value));
-                      }}
-                    />
+                    <div className="vol-slider-container">
+                      <span style={{color:'white', fontSize:'12px', marginBottom:'8px', fontWeight:'bold'}}>Kullanıcı Sesi</span>
+                      <input 
+                        type="range" min="0" max="1" step="0.01" defaultValue="1" 
+                        className="vol-slider" title="Sesi ayarla"
+                        onChange={(e) => {
+                          const audioTrack = p.getTrackPublication(Track.Source.Microphone)?.track;
+                          if (audioTrack && audioTrack.setVolume) audioTrack.setVolume(parseFloat(e.target.value));
+                        }}
+                      />
+                    </div>
                   )}
                 </div>
               );
@@ -314,6 +330,12 @@ export default function AudioRoom({ roomName, onLeave }) {
             <button className={`ctrl-btn ${isNoiseCancellingActive ? 'noise-active' : 'noise-inactive'}`} onClick={toggleNoiseCancellation} disabled={!isMicrophoneEnabled}>
               {noiseStatus}
             </button>
+            
+            {/* YENİ: KAMERA BUTONU */}
+            <button className={`ctrl-btn ${isCameraEnabled ? 'active' : ''}`} onClick={() => localParticipant?.setCameraEnabled(!isCameraEnabled)}>
+              {isCameraEnabled ? '📹 Kamerayı Kapat' : '📹 Kamera Aç'}
+            </button>
+
             <button className={`ctrl-btn ${isScreenShareEnabled ? 'active' : ''}`} onClick={() => localParticipant?.setScreenShareEnabled(!isScreenShareEnabled)}>
               📺 {isScreenShareEnabled ? 'Yayını Kapat' : 'Ekran Paylaş'}
             </button>
