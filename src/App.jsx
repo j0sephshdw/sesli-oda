@@ -1,21 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { LiveKitRoom } from '@livekit/components-react';
+import { KrispNoiseFilter, isKrispNoiseFilterSupported } from '@livekit/krisp-noise-filter';
 import AudioRoom from './AudioRoom';
 import '@livekit/components-styles';
 
-// DİKKAT: Render'daki Environment Variables kısmında VITE_LIVEKIT_URL tanımlı olmalı.
-// Veya 'wss://...' yazan yere kendi LiveKit linkini doğrudan yapıştırabilirsin.
-const LIVEKIT_URL = import.meta.env.VITE_LIVEKIT_URL || 'wss://bizim-dc-x3m53dz5.livekit.cloud';
+const LIVEKIT_URL = import.meta.env.VITE_LIVEKIT_URL;
 
 export default function App() {
   const [roomName, setRoomName] = useState('');
   const [participantName, setParticipantName] = useState('');
+  const [password, setPassword] = useState('');
   const [token, setToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isInvite, setIsInvite] = useState(false);
 
-  // Sayfa açıldığında linkte "room=oda_adi" var mı diye bakar
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
@@ -28,7 +27,7 @@ export default function App() {
   const handleJoin = async (e) => {
     e.preventDefault();
     if (!roomName.trim() || !participantName.trim()) {
-      setError('Lütfen tüm alanları doldurun.');
+      setError('İsim ve Oda Adı zorunludur.');
       return;
     }
 
@@ -39,16 +38,16 @@ export default function App() {
       const response = await fetch('/api/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomName, participantName }),
+        body: JSON.stringify({ roomName, participantName, password }),
       });
 
       const data = await response.json();
 
-      if (!response.ok) throw new Error(data.error || 'Bilet alınamadı.');
+      if (!response.ok) throw new Error(data.error || 'Bağlantı reddedildi.');
       
       setToken(data.token);
     } catch (err) {
-      setError(err.message || 'Bağlantı hatası.');
+      setError(err.message || 'Sunucuya ulaşılamadı.');
     } finally {
       setLoading(false);
     }
@@ -59,19 +58,9 @@ export default function App() {
     window.history.replaceState({}, document.title, window.location.pathname);
     setIsInvite(false);
     setRoomName('');
+    setPassword('');
   };
 
-  // URL hatasını ekrana bas (Senin aldığın hatanın çözümü)
-  if (token && (!LIVEKIT_URL || LIVEKIT_URL.includes('kendi-livekit-url'))) {
-    return (
-      <div style={{color:'white', padding:'20px', textAlign:'center', marginTop:'50px'}}>
-        <h2>🛑 Kritik Hata: LiveKit URL Bulunamadı</h2>
-        <p>Lütfen Render panelinden <b>VITE_LIVEKIT_URL</b> ayarını ekleyin veya App.jsx içindeki URL'yi kendi <i>wss://</i> linkinizle değiştirin.</p>
-      </div>
-    );
-  }
-
-  // Odayı Yükle
   if (token) {
     return (
       <LiveKitRoom
@@ -83,9 +72,9 @@ export default function App() {
         data-lk-theme="default"
         options={{
           audioCaptureDefaults: {
-            autoGainControl: true,
+            autoGainControl: false, // AGC kapalı (Oyun oynarken ses seviyesi aniden değişmez)
             echoCancellation: true,
-            noiseSuppression: true // Klavye ve dip sesleri engeller
+            noiseSuppression: true,
           }
         }}
       >
@@ -94,7 +83,6 @@ export default function App() {
     );
   }
 
-  // Giriş Ekranını Yükle
   return (
     <div className="join-container">
       <div className="join-card">
@@ -103,26 +91,16 @@ export default function App() {
         
         <form onSubmit={handleJoin}>
           <div className="form-group">
-            <label>Adın (örn: Emir)</label>
-            <input
-              type="text"
-              value={participantName}
-              onChange={(e) => setParticipantName(e.target.value)}
-              maxLength={15}
-              required
-            />
+            <label>Adın</label>
+            <input type="text" value={participantName} onChange={(e) => setParticipantName(e.target.value)} maxLength={15} required />
           </div>
           <div className="form-group">
             <label>Oda Adı</label>
-            <input
-              type="text"
-              value={roomName}
-              onChange={(e) => setRoomName(e.target.value)}
-              readOnly={isInvite}
-              style={{ opacity: isInvite ? 0.6 : 1 }}
-              maxLength={20}
-              required
-            />
+            <input type="text" value={roomName} onChange={(e) => setRoomName(e.target.value)} readOnly={isInvite} style={{ opacity: isInvite ? 0.6 : 1 }} maxLength={20} required />
+          </div>
+          <div className="form-group">
+            <label>Oda Şifresi {isInvite ? '(Varsa)' : '(Boş bırakırsan şifresiz olur)'}</label>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Gizli Şifre" />
           </div>
           <button type="submit" disabled={loading} className="join-btn">
             {loading ? 'Bağlanılıyor...' : 'Odaya Katıl'}

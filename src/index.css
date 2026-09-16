@@ -11,7 +11,6 @@ body {
     min-height: 100vh;
 }
 
-/* GİRİŞ EKRANI */
 .join-container {
     display: flex;
     justify-content: center;
@@ -90,7 +89,6 @@ body {
     font-weight: bold;
 }
 
-/* ODA İÇİ TASARIM */
 .custom-room-layout {
     display: flex;
     height: 100vh;
@@ -166,16 +164,52 @@ body {
     align-content: start;
 }
 
-/* Canlı yayın ve mikrofon kontrolleri */
-.room-controls {
+/* AKTİF KONUŞAN KİŞİYİ BELLİ ETME (GELİŞTİRİLDİ) */
+.lk-participant-tile[data-lk-speaking="true"] {
+    border: 3px solid #23a55a !important;
+    box-shadow: 0 0 15px rgba(35, 165, 90, 0.4) !important;
+    transition: all 0.2s ease-in-out;
+}
+
+.room-controls-wrapper {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
     align-items: center;
     gap: 15px;
     margin-top: 20px;
     padding: 15px;
     background: #2b2d31;
     border-radius: 12px;
+}
+
+.interactive-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.action-btn {
+    background: #1e1f22;
+    border: 1px solid #3f4147;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: 0.2s;
+}
+
+    .action-btn:hover {
+        background: #3f4147;
+    }
+
+    .action-btn.active {
+        background: #5865f2;
+        border-color: #5865f2;
+    }
+
+.main-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
 }
 
 .leave-btn {
@@ -187,13 +221,13 @@ body {
     font-weight: bold;
     cursor: pointer;
     transition: 0.2s;
+    height: 40px;
 }
 
     .leave-btn:hover {
         background: #a1282c;
     }
 
-/* SOHBET PANELİ */
 .chat-panel {
     width: 350px;
     background: #2b2d31;

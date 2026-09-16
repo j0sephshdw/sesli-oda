@@ -16,26 +16,48 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Token (Bilet) Üretme API'si
+// 1. KEEP-ALIVE (Render ücretsiz paket uyku gecikmesini aşmak için)
+// cron-job.org üzerinden "https://senin-siten.onrender.com/ping" adresine 10 dakikada bir istek atabilirsin.
+app.get('/ping', (req, res) => {
+  res.status(200).send('Sunucu Ayakta!');
+});
+
+// GÜVENLİK: Basit hafıza tabanlı oda şifresi yönetimi
+const roomPasswords = new Map();
+
+// Token Üretme API'si
 app.post('/api/token', async (req, res) => {
   try {
-    const { roomName, participantName } = req.body;
+    const { roomName, participantName, password } = req.body;
 
     if (!roomName || !participantName) {
       return res.status(400).json({ error: 'Oda adı ve kullanıcı adı zorunludur.' });
+    }
+
+    // GÜVENLİK: Şifre Kontrolü ve Admin Yetkisi (Data Channels & Attributes için)
+    let isAdmin = false;
+    if (!roomPasswords.has(roomName)) {
+      // Odayı ilk kuran şifreyi belirler ve oda yöneticisi olur
+      roomPasswords.set(roomName, password || '');
+      isAdmin = true;
+    } else {
+      // Oda zaten kuruluysa girilen şifreyi kontrol et
+      const existingPassword = roomPasswords.get(roomName);
+      if (existingPassword && existingPassword !== password) {
+        return res.status(403).json({ error: 'Hatalı oda şifresi girdiniz!' });
+      }
     }
 
     const apiKey = process.env.LIVEKIT_API_KEY;
     const apiSecret = process.env.LIVEKIT_API_SECRET;
 
     if (!apiKey || !apiSecret) {
-      return res.status(500).json({ error: 'LiveKit API anahtarları eksik! (.env dosyasını kontrol edin)' });
+      return res.status(500).json({ error: 'LiveKit API anahtarları eksik!' });
     }
 
-    // Kullanıcıya bilet oluştur
     const at = new AccessToken(apiKey, apiSecret, {
       identity: participantName,
-      ttl: '12h', // Bilet 12 saat geçerli
+      ttl: '12h',
     });
 
     at.addGrant({
@@ -43,20 +65,18 @@ app.post('/api/token', async (req, res) => {
       room: roomName,
       canPublish: true,
       canSubscribe: true,
+      roomAdmin: isAdmin, // Oda sahibi yetkisi enjekte edildi
     });
 
     const token = await at.toJwt();
-    return res.json({ token });
+    return res.json({ token, isAdmin });
   } catch (error) {
     console.error('Token üretme hatası:', error);
-    return res.status(500).json({ error: 'Sunucu bileti oluşturamadı.' });
+    return res.status(500).json({ error: 'Bilet oluşturulamadı.' });
   }
 });
 
-// React dosyalarını (dist) sunucuda yayınla
 app.use(express.static(path.join(__dirname, 'dist')));
-
-// Kullanıcı hangi linke girerse girsin React'e yönlendir (Davet linkleri için şart)
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });

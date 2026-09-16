@@ -13,6 +13,7 @@
   "dependencies": {
     "@livekit/components-react": "^2.6.3",
     "@livekit/components-styles": "^1.1.4",
+    "@livekit/krisp-noise-filter": "^0.4.4",
     "@livekit/track-processors": "^0.2.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   RoomAudioRenderer,
   ControlBar,
@@ -6,14 +6,16 @@ import {
   ParticipantTile,
   Chat,
   useTracks,
-  useRoomContext
+  useRoomContext,
+  useLocalParticipant
 } from '@livekit/components-react';
 import { Track } from 'livekit-client';
 
-export default function AudioRoom({ roomName }) {
+export default function AudioRoom({ roomName, onLeave }) {
   const room = useRoomContext();
+  const { localParticipant } = useLocalParticipant();
+  const [handRaised, setHandRaised] = useState(false);
   
-  // Mikrofonları ve Ekran Paylaşımlarını ekrana çiz
   const tracks = useTracks(
     [
       { source: Track.Source.Microphone, withPlaceholder: true },
@@ -25,12 +27,24 @@ export default function AudioRoom({ roomName }) {
   const copyInvite = () => {
     const url = `${window.location.origin}?room=${encodeURIComponent(roomName)}`;
     navigator.clipboard.writeText(url);
-    alert('✅ Davet linki kopyalandı! Arkadaşlarına gönderebilirsin.');
+    alert('✅ Davet linki kopyalandı!');
+  };
+
+  // Data Channels üzerinden interaktif özellikler
+  const toggleHand = () => {
+    setHandRaised(!handRaised);
+    localParticipant.setAttributes({ handRaised: !handRaised ? 'true' : 'false' });
+  };
+
+  const sendEmoji = async (emoji) => {
+    const strData = JSON.stringify({ type: 'emoji', emoji: emoji });
+    const data = new TextEncoder().encode(strData);
+    await localParticipant.publishData(data, { reliable: true });
+    // Kendimiz için de ufak bir bildirim gösterebiliriz
   };
 
   return (
     <div className="custom-room-layout">
-      {/* SOL PANEL (Kişiler ve Kontroller) */}
       <div className="main-panel">
         <header className="room-header">
           <div className="header-info">
@@ -40,25 +54,32 @@ export default function AudioRoom({ roomName }) {
           <button onClick={copyInvite} className="invite-btn">🔗 Davet Linki Kopyala</button>
         </header>
 
-        {/* Kişilerin Kutucukları */}
+        {/* Aktif konuşanı belirginleştiren profil alanı */}
         <div className="participants-grid">
           <TrackLoop tracks={tracks}>
             <ParticipantTile />
           </TrackLoop>
         </div>
 
-        {/* Butonlar */}
-        <footer className="room-controls">
-          <ControlBar 
-            controls={{ microphone: true, screenShare: true, camera: false, chat: false }} 
-          />
-          <button className="leave-btn" onClick={() => room.disconnect()}>
-            🚪 Odadan Ayrıl
-          </button>
+        {/* Özel Kontrol Çubuğu: Çift "Leave" butonu önlendi */}
+        <footer className="room-controls-wrapper">
+          <div className="interactive-actions">
+            <button onClick={toggleHand} className={handRaised ? "action-btn active" : "action-btn"}>✋</button>
+            <button onClick={() => sendEmoji('🔥')} className="action-btn">🔥</button>
+            <button onClick={() => sendEmoji('👍')} className="action-btn">👍</button>
+            <button onClick={() => sendEmoji('😂')} className="action-btn">😂</button>
+          </div>
+          
+          <div className="main-controls">
+             {/* leave: false yapılarak LiveKit'in orjinal kapatma butonu gizlendi */}
+            <ControlBar controls={{ microphone: true, screenShare: true, camera: false, chat: false, leave: false }} />
+            <button className="leave-btn" onClick={onLeave}>
+              🚪 Odadan Ayrıl
+            </button>
+          </div>
         </footer>
       </div>
 
-      {/* SAĞ PANEL (Sohbet) */}
       <div className="chat-panel">
         <Chat />
       </div>
