@@ -2,8 +2,14 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { AccessToken } from 'livekit-server-sdk';
+import path from 'path'; // EKLENDİ
+import { fileURLToPath } from 'url'; // EKLENDİ
 
 dotenv.config();
+
+// EKLENDİ: ES Module ("type": "module") yapısında klasör yolunu bulmak için
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -44,6 +50,14 @@ app.post('/api/token', async (req, res) => {
     console.error('Token üretme hatası:', error);
     return res.status(500).json({ error: 'Token oluşturulamadı.' });
   }
+});
+
+// EKLENDİ: Vite'ın derlediği (build) statik dosyaları sun
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// EKLENDİ: Bilinmeyen tüm URL'leri React'e (index.html) yönlendir
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 app.listen(PORT, () => {
