@@ -3,7 +3,8 @@ import { LiveKitRoom } from '@livekit/components-react';
 import AudioRoom from './AudioRoom';
 import '@livekit/components-styles';
 
-const LIVEKIT_URL = import.meta.env.VITE_LIVEKIT_URL;
+// Linkini doğrudan buraya kalıcı olarak sabitledik. En garantili yöntem!
+const LIVEKIT_URL = 'wss://bizim-dc-x3m53dz5.livekit.cloud';
 
 export default function App() {
   const [roomName, setRoomName] = useState('');
@@ -58,15 +59,6 @@ export default function App() {
     setRoomName('');
     setPassword('');
   };
-
-  if (token && (!LIVEKIT_URL || LIVEKIT_URL.includes('wss://bizim-dc-x3m53dz5.livekit.cloud'))) {
-    return (
-      <div style={{color:'white', padding:'20px', textAlign:'center', marginTop:'50px'}}>
-        <h2>🛑 Kritik Hata: LiveKit URL Bulunamadı</h2>
-        <p>Lütfen Render panelinden <b>VITE_LIVEKIT_URL</b> ayarını ekleyin.</p>
-      </div>
-    );
-  }
 
   if (token) {
     return (
