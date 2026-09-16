@@ -1,0 +1,86 @@
+:root {
+  --bg-main: #1e1f22;
+  --bg-card: #313338;
+  --accent: #5865f2;
+  --danger: #da373c;
+  --text-main: #f2f3f5;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-main);
+  color: var(--text-main);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.login-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+}
+
+.login-card {
+  background: var(--bg-card);
+  padding: 2rem;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 320px;
+}
+
+.login-card input {
+  padding: 12px;
+  border-radius: 8px;
+  border: none;
+  background: #1e1f22;
+  color: white;
+}
+
+.login-card button {
+  padding: 12px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.room-container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.custom-controls {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 12px 20px;
+  border-radius: 16px;
+  z-index: 999;
+}
+
+.custom-controls button {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  background: #4f545c;
+  color: white;
+  cursor: pointer;
+}
+
+.custom-controls button.active {
+  background: var(--accent);
+}
+
+.custom-controls button.danger {
+  background: var(--danger);
+}
