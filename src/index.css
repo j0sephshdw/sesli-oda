@@ -866,7 +866,7 @@ body {
    12. YENİ KART DİZAYNI VE AKILLI HOVER EFEKTLERİ
    ========================================================================== */
 
-/* Kamera görüntüsü ayarları */
+/* Kamera görüntüsü ayarları - HATA GİDERİLDİ (Sadece kendi kameramız aynalanır, başkaları düz kalır) */
 .user-video {
     position: absolute;
     top: 0;
@@ -876,7 +876,6 @@ body {
     object-fit: cover;
     z-index: 1;
     border-radius: 12px;
-    transform: scaleX(-1); /* Ayna efekti verir */
 }
 
 /* Dinamik renkli yeni nesil avatar */
@@ -927,8 +926,8 @@ body {
     justify-content: center;
 }
 
-/* Akıllı Hover (Üzerine Gelince Açılan) Ses Paneli */
-.vol-slider-container {
+/* Akıllı Hover (Üzerine Gelince Açılan) Kamera/Ses Paneli */
+.card-hover-overlay {
     position: absolute;
     top: 0;
     left: 0;
@@ -940,17 +939,70 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 15px;
     opacity: 0;
     transition: opacity 0.2s ease;
     border-radius: 12px;
     backdrop-filter: blur(3px);
 }
 
-.voice-user-card:hover .vol-slider-container {
+.voice-user-card:hover .card-hover-overlay {
     opacity: 1;
 }
+
+.cam-actions {
+    display: flex;
+    gap: 10px;
+}
+
+    .cam-actions button {
+        background: rgba(255, 255, 255, 0.1);
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 6px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+        transition: 0.2s;
+    }
+
+        .cam-actions button:hover {
+            background: #5865f2;
+            border-color: #5865f2;
+        }
+
+.vol-slider-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 80%;
+}
+
+    .vol-slider-wrapper span {
+        color: white;
+        font-size: 11px;
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
 
 /* Çakışmayı engellemek için eski rozeti gizliyoruz */
 .voice-user-card > .muted-badge {
     display: none;
 }
+
+/* ==========================================================================
+   13. KAMERA TAM EKRAN DÜZENİ
+   ========================================================================== */
+.voice-user-card:fullscreen {
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    border-radius: 0;
+    border: none;
+    background: #000;
+}
+
+    .voice-user-card:fullscreen .user-video {
+        border-radius: 0;
+        object-fit: contain; /* Tam ekranda görüntünün kesilmesini engeller */
+    }

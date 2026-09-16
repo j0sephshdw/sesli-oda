@@ -9,12 +9,11 @@ import {
   TrackLoop,
   ParticipantTile,
   ConnectionQualityIndicator,
-  VideoTrack // YENİ: Kamera Görüntüsü İçin Eklendi
+  VideoTrack
 } from '@livekit/components-react';
 import { Track, RoomEvent } from 'livekit-client';
 import { KrispNoiseFilter, isKrispNoiseFilterSupported } from '@livekit/krisp-noise-filter';
 
-// DİNAMİK RENK ÜRETİCİ (Discord Renk Paleti)
 const getAvatarColor = (name) => {
   const colors = ['#5865F2', '#57F287', '#FEE75C', '#EB459E', '#ED4245', '#00a8fc'];
   let hash = 0;
@@ -42,6 +41,46 @@ export default function AudioRoom({ roomName, onLeave }) {
 
   const processorRef = useRef(null);
   const stageRef = useRef(null);
+  
+  // YENİ: Önceki mesaj sayısını tutarak yeni mesaj geldiğinde ses çalmasını sağlar
+  const prevChatCount = useRef(0);
+
+  const playTone = (type) => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') ctx.resume();
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      
+      if (type === 'join') {
+        osc.frequency.setValueAtTime(300, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.15);
+      } else if (type === 'leave') {
+        osc.frequency.setValueAtTime(600, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(300, ctx.currentTime + 0.15);
+      } else if (type === 'message') {
+        // DİSCORD MESAJ SESİ (POP)
+        osc.frequency.setValueAtTime(800, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.01, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.1);
+        return; 
+      }
+      
+      gain.gain.setValueAtTime(0.02, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.2);
+    } catch(e) {}
+  };
 
   const handleSendMessage = () => {
     if (msg.trim()) {
@@ -51,8 +90,16 @@ export default function AudioRoom({ roomName, onLeave }) {
   };
 
   useEffect(() => {
+    // Yeni mesaj geldiyse ve gönderen biz değilsek bildirim sesi çal
+    if (chatMessages.length > prevChatCount.current) {
+      const lastMsg = chatMessages[chatMessages.length - 1];
+      if (lastMsg.from?.identity !== localParticipant?.identity) {
+        playTone('message');
+      }
+      prevChatCount.current = chatMessages.length;
+    }
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages]);
+  }, [chatMessages, localParticipant]);
 
   useEffect(() => {
     const setupNoiseCancellation = async () => {
@@ -89,33 +136,6 @@ export default function AudioRoom({ roomName, onLeave }) {
   }, [isMicrophoneEnabled, localParticipant]);
 
   useEffect(() => {
-    const playTone = (type) => {
-      try {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (!AudioCtx) return;
-        const ctx = new AudioCtx();
-        if (ctx.state === 'suspended') ctx.resume();
-
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.type = 'sine';
-        
-        if (type === 'join') {
-          osc.frequency.setValueAtTime(300, ctx.currentTime);
-          osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.15);
-        } else {
-          osc.frequency.setValueAtTime(600, ctx.currentTime);
-          osc.frequency.exponentialRampToValueAtTime(300, ctx.currentTime + 0.15);
-        }
-        gain.gain.setValueAtTime(0.02, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.2);
-      } catch(e) {}
-    };
-
     const handleDataReceived = (payload) => {
       try {
         const str = new TextDecoder().decode(payload);
@@ -139,9 +159,7 @@ export default function AudioRoom({ roomName, onLeave }) {
     const id = Date.now() + Math.random();
     const leftPos = Math.floor(Math.random() * 60) + 20;
     setFloatingEmojis((prev) => [...prev, { id, emoji, left: leftPos }]);
-    setTimeout(() => {
-      setFloatingEmojis((prev) => prev.filter((item) => item.id !== id));
-    }, 2000);
+    setTimeout(() => setFloatingEmojis((prev) => prev.filter((item) => item.id !== id)), 2000);
   };
 
   const sendEmojiReaction = (emoji) => {
@@ -196,16 +214,19 @@ export default function AudioRoom({ roomName, onLeave }) {
     onLeave();
   };
 
-  const toggleFullScreen = () => {
+  // GENEL TAM EKRAN VE PIP FONKSİYONLARI (Kamera Kartları İçin)
+  const toggleCardFullScreen = (e) => {
+    const card = e.currentTarget.closest('.voice-user-card, .screen-share-stage');
     if (!document.fullscreenElement) {
-      stageRef.current?.requestFullscreen().catch(err => console.error(err));
+      card.requestFullscreen().catch(err => console.error(err));
     } else {
       document.exitFullscreen();
     }
   };
 
-  const togglePiP = async () => {
-    const videoEl = stageRef.current?.querySelector('video');
+  const toggleCardPiP = async (e) => {
+    const card = e.currentTarget.closest('.voice-user-card, .screen-share-stage');
+    const videoEl = card.querySelector('video');
     if (videoEl && document.pictureInPictureEnabled) {
       try {
         if (document.pictureInPictureElement) {
@@ -244,10 +265,10 @@ export default function AudioRoom({ roomName, onLeave }) {
         <div className={`dynamic-view-area ${screenTracks.length > 0 ? 'has-screen' : ''}`}>
           
           {screenTracks.length > 0 && (
-            <div className="screen-share-stage" ref={stageRef} onDoubleClick={toggleFullScreen}>
+            <div className="screen-share-stage" ref={stageRef} onDoubleClick={toggleCardFullScreen}>
               <div className="screen-overlay-actions">
-                <button onClick={togglePiP} title="Pencere İçinde Aç">🗗 Pencere (PiP)</button>
-                <button onClick={toggleFullScreen} title="Tam Ekran Yap">⛶ Tam Ekran</button>
+                <button onClick={toggleCardPiP} title="Pencere İçinde Aç">🗗 PiP</button>
+                <button onClick={toggleCardFullScreen} title="Tam Ekran Yap">⛶ Tam Ekran</button>
               </div>
               <TrackLoop tracks={screenTracks}><ParticipantTile /></TrackLoop>
             </div>
@@ -262,7 +283,7 @@ export default function AudioRoom({ roomName, onLeave }) {
               const isCamOn = p.isCameraEnabled || p.getTrackPublication(Track.Source.Camera)?.track;
 
               return (
-                <div key={p.identity} className={`voice-user-card ${p.isSpeaking ? 'speaking' : ''}`}>
+                <div key={p.identity} className={`voice-user-card ${p.isSpeaking ? 'speaking' : ''}`} onDoubleClick={isCamOn ? toggleCardFullScreen : undefined}>
                   <div className="quality-indicator"><ConnectionQualityIndicator participant={p} /></div>
                   
                   {isUserHandRaised && <div className="hand-raised-badge">✋</div>}
@@ -291,18 +312,32 @@ export default function AudioRoom({ roomName, onLeave }) {
                      </div>
                   )}
                   
-                  {/* AKILLI HOVER SES AYARI */}
-                  {p.identity !== localParticipant?.identity && (
-                    <div className="vol-slider-container">
-                      <span style={{color:'white', fontSize:'12px', marginBottom:'8px', fontWeight:'bold'}}>Kullanıcı Sesi</span>
-                      <input 
-                        type="range" min="0" max="1" step="0.01" defaultValue="1" 
-                        className="vol-slider" title="Sesi ayarla"
-                        onChange={(e) => {
-                          const audioTrack = p.getTrackPublication(Track.Source.Microphone)?.track;
-                          if (audioTrack && audioTrack.setVolume) audioTrack.setVolume(parseFloat(e.target.value));
-                        }}
-                      />
+                  {/* YENİ AKILLI HOVER MENÜSÜ (Kamera + Ses Kontrolleri) */}
+                  {(p.identity !== localParticipant?.identity || isCamOn) && (
+                    <div className="card-hover-overlay">
+                      
+                      {/* Kamera açıksa PiP ve Tam Ekran butonlarını göster */}
+                      {isCamOn && (
+                        <div className="cam-actions">
+                          <button onClick={toggleCardPiP} title="Pencere İçinde Aç">🗗 PiP</button>
+                          <button onClick={toggleCardFullScreen} title="Tam Ekran Yap">⛶ Tam Ekran</button>
+                        </div>
+                      )}
+
+                      {/* Başkasının kartıysa Ses Ayarını göster */}
+                      {p.identity !== localParticipant?.identity && (
+                        <div className="vol-slider-wrapper">
+                          <span>Kullanıcı Sesi</span>
+                          <input 
+                            type="range" min="0" max="1" step="0.01" defaultValue="1" 
+                            className="vol-slider" title="Sesi ayarla"
+                            onChange={(e) => {
+                              const audioTrack = p.getTrackPublication(Track.Source.Microphone)?.track;
+                              if (audioTrack && audioTrack.setVolume) audioTrack.setVolume(parseFloat(e.target.value));
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -331,7 +366,6 @@ export default function AudioRoom({ roomName, onLeave }) {
               {noiseStatus}
             </button>
             
-            {/* YENİ: KAMERA BUTONU */}
             <button className={`ctrl-btn ${isCameraEnabled ? 'active' : ''}`} onClick={() => localParticipant?.setCameraEnabled(!isCameraEnabled)}>
               {isCameraEnabled ? '📹 Kamerayı Kapat' : '📹 Kamera Aç'}
             </button>
