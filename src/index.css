@@ -1226,3 +1226,87 @@ body {
         opacity: 1;
     }
 }
+/* ==========================================================================
+   16. @MENTION (ETİKETLEME), MARKDOWN VE TAÇ
+   ========================================================================== */
+
+/* Oda Kurucusunun (Admin) Tacı */
+.admin-crown {
+    font-size: 14px;
+    margin-right: 4px;
+    filter: drop-shadow(0 0 5px rgba(255, 215, 0, 0.6));
+    cursor: help;
+}
+
+/* Kendi isminin geçtiği (@Ben) etiket rozeti */
+.mention-badge {
+    background: rgba(88, 101, 242, 0.3);
+    color: #c9cdfb;
+    padding: 0 4px;
+    border-radius: 4px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+    .mention-badge:hover {
+        background: rgba(88, 101, 242, 0.6);
+    }
+
+/* Başkalarının isimlerinin geçtiği etiket rozeti */
+.mention-other {
+    color: #00a8fc;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+    .mention-other:hover {
+        text-decoration: underline;
+    }
+
+/* Biri bizi etiketlediğinde mesajın tamamı Discord'daki gibi sarımtırak parlar */
+.mentioned-msg {
+    background: rgba(250, 166, 26, 0.1) !important;
+    border-left: 3px solid #faa61a;
+    border-radius: 0 8px 8px 0 !important;
+}
+/* ==========================================================================
+   17. STÜDYO MODU (AKTİF KONUŞMACI VURGUSU VE GEÇİŞLER)
+   ========================================================================== */
+
+/* Biri konuşurken kart hafifçe büyür (Focus) */
+.voice-user-card.speaking {
+    transform: scale(1.05); /* Normal hover (1.02) etkisinden daha fazla büyütür */
+    z-index: 5; /* Diğer kartların üstüne çıkarır */
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.2s ease;
+}
+
+/* Odada herhangi biri konuşuyorsa (bir kart .speaking sınıfına sahipse), 
+   konuşmayan DİĞER TÜM KARTLARI hafifçe soluklaştırıp geriye atarız */
+.voice-users-grid:has(.voice-user-card.speaking) .voice-user-card:not(.speaking) {
+    opacity: 0.7;
+    filter: saturate(0.8) contrast(0.9);
+    transform: scale(0.98);
+}
+
+/* Kamera Kapanırken Avatarın Pürüzsüz Gelmesi */
+.voice-user-card .avatar {
+    animation: fadeInAvatar 0.4s ease-out;
+}
+
+@keyframes fadeInAvatar {
+    from {
+        opacity: 0;
+        transform: scale(0.8) rotate(-10deg);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) rotate(0deg);
+    }
+}
+
+/* Kartlardaki ses dalgası (.waveform) konuşma şiddetine göre daha belirgin olsun */
+.voice-user-card.speaking .waveform .bar {
+    background-color: #57F287; /* Normal yeşilden daha parlak bir yeşil */
+    box-shadow: 0 0 8px rgba(87, 242, 135, 0.6);
+}

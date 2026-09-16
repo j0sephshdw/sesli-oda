@@ -12,8 +12,9 @@ export default function App() {
   const [token, setToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  
+  const [isAdmin, setIsAdmin] = useState(false);
 
-  // URL üzerindeki ?room= parametresini kontrol et
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const roomParam = urlParams.get('room');
@@ -47,6 +48,7 @@ export default function App() {
       localStorage.setItem('lastRoom', roomName.trim());
       localStorage.setItem('lastName', participantName.trim());
       
+      setIsAdmin(data.isAdmin); 
       setToken(data.token);
     } catch (err) {
       setError(err.message || 'Sunucuya ulaşılamadı.');
@@ -60,16 +62,17 @@ export default function App() {
       <LiveKitRoom
         video={false}
         audio={{
-          echoCancellation: true,
-          noiseSuppression: false, // Krisp AI entegrasyonu için tarayıcı filtresini kapatın
-          autoGainControl: false
+          // YENİ SES GÜÇLENDİRMESİ
+          echoCancellation: true, // Yankıyı engeller
+          noiseSuppression: false, // Tarayıcı filtresini tamamen kapattık ki Krisp AI tam güç çalışsın
+          autoGainControl: true, // DÜZELTME: Sesi az gidenler için bu özellik tekrar açıldı (Ses seviyesini otomatik dengeler)
         }}
         token={token}
         serverUrl={LIVEKIT_URL}
         onDisconnected={() => setToken('')}
         data-lk-theme="default"
       >
-        <AudioRoom roomName={roomName} onLeave={() => setToken('')} />
+        <AudioRoom roomName={roomName} isAdmin={isAdmin} onLeave={() => setToken('')} />
       </LiveKitRoom>
     );
   }

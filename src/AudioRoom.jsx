@@ -21,19 +21,7 @@ const getAvatarColor = (name) => {
   return colors[Math.abs(hash) % colors.length];
 };
 
-// YENİ: Linkleri Tıklanabilir Yapan Fonksiyon
-const renderMessageText = (text) => {
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
-  const parts = text.split(urlRegex);
-  return parts.map((part, i) => {
-    if (part.match(urlRegex)) {
-      return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">{part}</a>;
-    }
-    return part;
-  });
-};
-
-export default function AudioRoom({ roomName, onLeave }) {
+export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   const room = useRoomContext();
   const participants = useParticipants(); 
   const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled, isCameraEnabled } = useLocalParticipant();
@@ -55,7 +43,6 @@ export default function AudioRoom({ roomName, onLeave }) {
   const [isChatVisible, setIsChatVisible] = useState(true);
   const [typing, setTyping] = useState({});
 
-  // YENİ: Ayarlar Menüsü Stateleri
   const [showSettings, setShowSettings] = useState(false);
   const [audioDevices, setAudioDevices] = useState([]);
   const [videoDevices, setVideoDevices] = useState([]);
@@ -64,7 +51,17 @@ export default function AudioRoom({ roomName, onLeave }) {
   const stageRef = useRef(null);
   const prevChatCount = useRef(0);
 
-  // YENİ: Cihazları Getir
+  // Kendi ismimizi etiketlerde tanımak için alıyoruz
+  const myDisplayName = (localParticipant?.name || localParticipant?.identity || '').split('_')[0];
+
+  // YENİ: Admin Yetkisini Katılımcı Bilgilerine İşleme
+  useEffect(() => {
+    if (localParticipant && isAdmin) {
+      localParticipant.setAttributes({ ...localParticipant.attributes, admin: 'true' });
+    }
+  }, [localParticipant, isAdmin]);
+
+  // Cihazları Getir
   useEffect(() => {
     if (showSettings) {
       navigator.mediaDevices.enumerateDevices().then(devices => {
@@ -125,6 +122,13 @@ export default function AudioRoom({ roomName, onLeave }) {
         osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.1);
         gain.gain.setValueAtTime(0.01, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+      } else if (type === 'mention') {
+        // YENİ: Etiketlenme (Mention) Sesi (Yüksek frekanslı ardışık ping)
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(600, ctx.currentTime);
+        osc.frequency.setValueAtTime(1200, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.05, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
       } else if (type === 'screen_share') {
         osc.type = 'square';
         osc.frequency.setValueAtTime(440, ctx.currentTime);
@@ -133,13 +137,13 @@ export default function AudioRoom({ roomName, onLeave }) {
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
       }
       
-      if(type !== 'message' && type !== 'screen_share'){
+      if(type !== 'message' && type !== 'screen_share' && type !== 'mention'){
          gain.gain.setValueAtTime(0.02, ctx.currentTime);
          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
       }
 
       osc.start();
-      osc.stop(ctx.currentTime + (type === 'screen_share' ? 0.2 : 0.15));
+      osc.stop(ctx.currentTime + (type === 'screen_share' ? 0.2 : type === 'mention' ? 0.25 : 0.15));
     } catch(e) {}
   };
 
@@ -153,19 +157,27 @@ export default function AudioRoom({ roomName, onLeave }) {
   const handleTyping = (e) => {
     setMsg(e.target.value);
     if (room?.localParticipant) {
-      const data = JSON.stringify({ type: 'TYPING', name: (localParticipant.name || localParticipant.identity).split('_')[0] });
+      const data = JSON.stringify({ type: 'TYPING', name: myDisplayName });
       room.localParticipant.publishData(new TextEncoder().encode(data), { reliable: false });
     }
   };
 
+  // Yeni mesaj geldiğinde Mention kontrolü
   useEffect(() => {
     if (chatMessages.length > prevChatCount.current) {
       const lastMsg = chatMessages[chatMessages.length - 1];
-      if (lastMsg.from?.identity !== localParticipant?.identity) playTone('message');
+      if (lastMsg.from?.identity !== localParticipant?.identity) {
+        // İsmin geçiyorsa (Büyük/küçük harf duyarsız)
+        if (lastMsg.message.toLowerCase().includes(`@${myDisplayName.toLowerCase()}`)) {
+            playTone('mention');
+        } else {
+            playTone('message');
+        }
+      }
       prevChatCount.current = chatMessages.length;
     }
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages, localParticipant]);
+  }, [chatMessages, localParticipant, myDisplayName]);
 
   useEffect(() => {
     if(screenTracks.length > 0) playTone('screen_share');
@@ -335,11 +347,37 @@ export default function AudioRoom({ roomName, onLeave }) {
 
   const formatTime = (timestamp) => new Date(timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
-  const activeTypers = Object.keys(typing).filter(name => name !== (localParticipant?.name || localParticipant?.identity || '').split('_')[0]);
+  // YENİ: Gelişmiş Mesaj Renderer (Linkler, Kalın Yazı ve Mentionlar)
+  const renderMessageText = (text) => {
+    // URL, **Kalın** ve @Kullanıcı gibi kelimeleri parçalıyoruz
+    const parts = text.split(/(https?:\/\/[^\s]+|\*\*.*?\*\*|@[^\s]+)/g);
+
+    return parts.map((part, i) => {
+      // 1. Link Kontrolü
+      if (part.match(/https?:\/\/[^\s]+/)) {
+        return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">{part}</a>;
+      } 
+      // 2. Kalın (Bold) Yazı Kontrolü
+      else if (part.match(/\*\*(.*?)\*\*/)) {
+        return <strong key={i}>{part.replace(/\*\*/g, '')}</strong>;
+      } 
+      // 3. Bizim Etiketlenmemiz Kontrolü (@isim)
+      else if (part.toLowerCase() === `@${myDisplayName.toLowerCase()}`) {
+        return <span key={i} className="mention-badge">{part}</span>;
+      } 
+      // 4. Başkalarının Etiketlenmesi Kontrolü
+      else if (part.startsWith('@')) {
+        return <span key={i} className="mention-other">{part}</span>;
+      }
+      return part;
+    });
+  };
+
+  const activeTypers = Object.keys(typing).filter(name => name !== myDisplayName);
 
   return (
     <div className="custom-room-layout">
-      {/* YENİ: Ayarlar Modalı */}
+      {/* Ayarlar Modalı */}
       {showSettings && (
         <div className="settings-modal-overlay" onClick={() => setShowSettings(false)}>
           <div className="settings-modal" onClick={e => e.stopPropagation()}>
@@ -405,6 +443,8 @@ export default function AudioRoom({ roomName, onLeave }) {
               const isUserDeafened = p.attributes?.deafened === 'true';
               const isUserHandRaised = p.attributes?.handRaised === 'true';
               const isUserAfk = p.attributes?.afk === 'true';
+              const isUserAdmin = p.attributes?.admin === 'true'; // YENİ: Admin Yetkisi
+              
               const displayName = (p.name || p.identity || 'Misafir').split('_')[0];
               const isUserSharingScreen = p.isScreenShareEnabled;
               const isCamOn = p.isCameraEnabled; 
@@ -427,6 +467,8 @@ export default function AudioRoom({ roomName, onLeave }) {
                   )}
 
                   <div className="card-footer">
+                    {/* YENİ: Oda kurucusu ise adının solunda Altın Taç çıkar */}
+                    {isUserAdmin && <span className="admin-crown" title="Oda Kurucusu">👑</span>}
                     <span className="name">{displayName}</span>
                     <span className="status-icons">
                       {isUserDeafened ? '🎧' : !p.isMicrophoneEnabled ? '🔇' : ''}
@@ -473,6 +515,7 @@ export default function AudioRoom({ roomName, onLeave }) {
             <button onClick={() => sendEmojiReaction('🔥')} className="action-btn">🔥</button>
             <button onClick={() => sendEmojiReaction('👍')} className="action-btn">👍</button>
             <button onClick={() => sendEmojiReaction('😂')} className="action-btn">😂</button>
+            <button onClick={() => sendEmojiReaction('🎉')} className="action-btn">🎉</button>
             <button onClick={toggleHandRaise} className={`action-btn ${isHandRaised ? 'active-hand' : ''}`} title="El Kaldır">✋</button>
             <button onClick={toggleAfk} className={`action-btn ${isAfk ? 'active-hand' : ''}`} title="AFK Modu">☕</button>
             <button onClick={() => setShowSettings(true)} className="action-btn" title="Ayarlar">⚙️</button>
@@ -513,16 +556,19 @@ export default function AudioRoom({ roomName, onLeave }) {
           <div className="chat-header">💬 Sohbet</div>
           <div className="chat-messages">
             <div className="chat-sys-msg">Mesajlar uçtan uca şifrelidir.</div>
-            {chatMessages.map(m => (
-              <div key={m.id} className="chat-msg">
-                <div className="chat-msg-header">
-                  <span className="chat-sender">{(m.from?.name || m.from?.identity || 'Anonim').split('_')[0]}</span>
-                  <span className="chat-time">{formatTime(m.timestamp)}</span>
+            {chatMessages.map(m => {
+              // Mesajda etiketlenip etiketlenmediğimizi kontrol edip mesaj arka planını sarı yapıyoruz
+              const isMentioned = m.message.toLowerCase().includes(`@${myDisplayName.toLowerCase()}`);
+              return (
+                <div key={m.id} className={`chat-msg ${isMentioned ? 'mentioned-msg' : ''}`}>
+                  <div className="chat-msg-header">
+                    <span className="chat-sender">{(m.from?.name || m.from?.identity || 'Anonim').split('_')[0]}</span>
+                    <span className="chat-time">{formatTime(m.timestamp)}</span>
+                  </div>
+                  <div className="chat-text">{renderMessageText(m.message)}</div>
                 </div>
-                {/* YENİ: Tıklanabilir Linkler İçin Render Fonksiyonu Kullanıldı */}
-                <div className="chat-text">{renderMessageText(m.message)}</div>
-              </div>
-            ))}
+              );
+            })}
             <div ref={chatEndRef} />
           </div>
           
@@ -538,7 +584,7 @@ export default function AudioRoom({ roomName, onLeave }) {
               value={msg} 
               onChange={handleTyping} 
               onKeyDown={e => e.key === 'Enter' && handleSendMessage()} 
-              placeholder="Mesaj..." 
+              placeholder="Mesaj... (@isim veya **kalın**)" 
             />
             <button onClick={handleSendMessage}>Gönder</button>
           </div>
