@@ -25,34 +25,45 @@ export default function AudioRoom({ roomName, onLeave }) {
 
   const [krispProcessor, setKrispProcessor] = useState(null);
   const [isKrispActive, setIsKrispActive] = useState(false);
+  const [krispStatus, setKrispStatus] = useState('⏳ Yükleniyor...');
 
   // Otomatik Sohbet Kaydırma
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  // 1. AŞAMA: Krisp AI Modelini Hazırla
+  // 1. AŞAMA: Krisp AI Modelini En Başta İndir ve Hazırla
   useEffect(() => {
     if (isKrispNoiseFilterSupported()) {
-      setKrispProcessor(KrispNoiseFilter());
+      const processor = KrispNoiseFilter();
+      setKrispProcessor(processor);
+      setKrispStatus('Hazır');
+    } else {
+      setKrispStatus('Desteklenmiyor');
     }
   }, []);
 
-  // 2. AŞAMA: Mikrofon Açıldığı An Krisp'i OTOMATİK Devreye Sok (YENİ)
+  // 2. AŞAMA: Odaya Girilip Mikrofon Açıldığı An ZORLA Devreye Sok (Default AÇIK)
   useEffect(() => {
     const autoEnableKrisp = async () => {
       const track = localParticipant?.getTrackPublication(Track.Source.Microphone)?.track;
       if (track && isMicrophoneEnabled && krispProcessor && !isKrispActive) {
         try {
+          setKrispStatus('Başlatılıyor...');
           await track.setProcessor(krispProcessor);
           setIsKrispActive(true);
+          setKrispStatus('Gürültü Engelleyici (AÇIK)');
         } catch (err) {
           console.error("Krisp otomatik başlatılamadı:", err);
+          setKrispStatus('Hata: Açılamadı');
         }
+      } else if (!isMicrophoneEnabled) {
+         setKrispStatus('Mikrofon Kapalı');
+         setIsKrispActive(false);
       }
     };
     autoEnableKrisp();
-  }, [isMicrophoneEnabled, localParticipant, krispProcessor, isKrispActive]);
+  }, [isMicrophoneEnabled, localParticipant, krispProcessor]);
 
   // Giriş / Çıkış Ses Efektleri (SFX)
   useEffect(() => {
@@ -98,23 +109,24 @@ export default function AudioRoom({ roomName, onLeave }) {
     alert('✅ Davet linki kopyalandı! Arkadaşlarına gönderebilirsin.');
   };
 
-  // Emojileri Sohbete Düşür
   const sendEmoji = (emoji) => {
     send(`Tepki gönderdi: ${emoji}`);
   };
 
   const toggleKrisp = async () => {
-    if (!isKrispNoiseFilterSupported()) return alert("Tarayıcınız Krisp AI desteklemiyor.");
+    if (!krispProcessor) return alert("Filtre henüz hazır değil veya desteklenmiyor.");
     const track = localParticipant?.getTrackPublication(Track.Source.Microphone)?.track;
-    if (!track || !isMicrophoneEnabled) return alert("⚠️ Krisp AI'yi değiştirmek için mikrofonunuz açık olmalı!");
+    if (!track || !isMicrophoneEnabled) return alert("Filtreyi değiştirmek için mikrofonunuz açık olmalı.");
 
     try {
       if (isKrispActive) {
         await track.stopProcessor();
         setIsKrispActive(false);
+        setKrispStatus('Gürültü Engelleyici (KAPALI)');
       } else {
         await track.setProcessor(krispProcessor);
         setIsKrispActive(true);
+        setKrispStatus('Gürültü Engelleyici (AÇIK)');
       }
     } catch (err) {
       alert("Filtre değiştirilemedi: " + err.message);
@@ -150,23 +162,19 @@ export default function AudioRoom({ roomName, onLeave }) {
                 <div className="quality-indicator"><ConnectionQualityIndicator participant={p} /></div>
                 <div className="avatar">👤</div>
                 <div className="name">{p.identity.split('_')[0]}</div>
-                {p.isSpeaking && <div className="speak-ring">🎙️ Konuşuyor</div>}
+                {p.isSpeaking && (
+                   <div className="waveform">
+                     <span className="bar"></span><span className="bar"></span><span className="bar"></span>
+                   </div>
+                )}
                 
-                {/* YENİ: KİŞİYE ÖZEL SES KISMA/AÇMA */}
                 {p.identity !== localParticipant.identity && (
                   <input 
-                    type="range" 
-                    min="0" 
-                    max="1" 
-                    step="0.01" 
-                    defaultValue="1" 
-                    style={{ width: '80%', marginTop: '10px', cursor: 'pointer' }}
-                    title="Bu kişinin sesini ayarla"
+                    type="range" min="0" max="1" step="0.01" defaultValue="1" 
+                    className="vol-slider" title="Bu kişinin sesini ayarla"
                     onChange={(e) => {
                       const audioTrack = p.getTrackPublication(Track.Source.Microphone)?.track;
-                      if (audioTrack && audioTrack.setVolume) {
-                        audioTrack.setVolume(parseFloat(e.target.value));
-                      }
+                      if (audioTrack && audioTrack.setVolume) audioTrack.setVolume(parseFloat(e.target.value));
                     }}
                   />
                 )}
@@ -184,12 +192,25 @@ export default function AudioRoom({ roomName, onLeave }) {
           </div>
           
           <div className="main-controls">
-            <button className={`ctrl-btn ${!isMicrophoneEnabled ? 'muted' : 'active'}`} onClick={() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}>
+            <button 
+              className={`ctrl-btn ${!isMicrophoneEnabled ? 'muted' : 'active'}`} 
+              onClick={() => {
+                // Mikrofonu açarken gürültü ayarlarını ZORLA basıyoruz
+                localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled, {
+                  echoCancellation: true,
+                  noiseSuppression: true,
+                  autoGainControl: false 
+                });
+              }}
+            >
               {isMicrophoneEnabled ? '🎙️ Mikrofon Açık' : '🔇 Mikrofon Kapalı'}
             </button>
 
-            <button className={`ctrl-btn ${isKrispActive ? 'krisp-active' : ''}`} onClick={toggleKrisp}>
-              🎧 {isKrispActive ? 'Gürültü Engelleyici (AÇIK)' : 'Gürültü Engelleyici (KAPALI)'}
+            <button 
+              className={`ctrl-btn ${isKrispActive ? 'krisp-active' : 'krisp-inactive'}`} 
+              onClick={toggleKrisp}
+            >
+              🎧 {krispStatus}
             </button>
             
             <button className={`ctrl-btn ${isScreenShareEnabled ? 'active' : ''}`} onClick={() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled)}>
