@@ -3,129 +3,173 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Özel Sesli İletişim Merkezi</title>
+    <title>Gelişmiş Sesli & Görüntülü İletişim Merkezi</title>
     <!-- LiveKit Client -->
     <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
     <style>
+        :root {
+            --bg-main: #1e1f22;
+            --bg-card: #313338;
+            --bg-panel: #2b2d31;
+            --accent: #5865f2;
+            --accent-hover: #4752c4;
+            --success: #23a55a;
+            --danger: #da373c;
+            --text-main: #f2f3f5;
+            --text-muted: #949ba4;
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background: #1e1f22; color: #f2f3f5;
+            background: var(--bg-main); color: var(--text-main);
             display: flex; align-items: center; justify-content: center;
-            height: 100vh; margin: 0;
+            min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box;
         }
+
         .card {
-            background: #313338; padding: 2rem; border-radius: 12px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.4); width: 90%; max-width: 900px;
+            background: var(--bg-card); padding: 2rem; border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5); width: 100%; max-width: 1100px;
             display: flex; flex-direction: column; gap: 20px;
         }
-        h2 { margin-top: 0; margin-bottom: 0px; font-size: 22px; color: #fff; text-align: center; }
-        
-        #login-form { text-align: center; max-width: 350px; margin: 0 auto; }
-        input {
-            width: 100%; padding: 12px; margin: 8px 0; border-radius: 6px;
-            border: 1px solid #1e1f22; background: #1e1f22; color: #fff; outline: none; box-sizing: border-box;
-        }
-        input:focus { border-color: #5865f2; }
-        button {
-            width: 100%; padding: 12px; border-radius: 6px; border: none; cursor: pointer;
-            font-size: 15px; font-weight: 600; transition: 0.2s; background: #5865f2; color: white;
-        }
-        button:hover { background: #4752c4; }
-        
-        .action-buttons { display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
-        .mute-btn { background: #23a55a; flex: 1; min-width: 120px; }
-        .mute-btn.active { background: #da373c; }
-        .share-btn { background: #4f545c; flex: 1; min-width: 120px; }
-        .share-btn.active { background: #5865f2; }
-        .invite-btn { background: #00a8fc; flex: 1; min-width: 120px; }
-        .invite-btn:hover { background: #0090d8; }
-        .settings-btn { background: #7289da; flex: 1; min-width: 120px; }
-        .settings-btn:hover { background: #5b6eae; }
 
+        h2 { margin: 0; font-size: 24px; text-align: center; font-weight: 600; }
+        
+        /* Giriş Formu */
+        #login-form { text-align: center; max-width: 400px; margin: 20px auto; width: 100%; }
+        input {
+            width: 100%; padding: 14px; margin: 10px 0; border-radius: 8px;
+            border: 2px solid var(--bg-main); background: var(--bg-main); 
+            color: var(--text-main); outline: none; box-sizing: border-box;
+            transition: border-color 0.2s; font-size: 15px;
+        }
+        input:focus { border-color: var(--accent); }
+        button {
+            padding: 12px 20px; border-radius: 8px; border: none; cursor: pointer;
+            font-size: 15px; font-weight: 600; transition: all 0.2s; 
+            background: var(--accent); color: white; display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        button:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        button:active { transform: translateY(1px); }
+        #login-btn { width: 100%; margin-top: 10px; padding: 14px; font-size: 16px; }
+
+        /* Aksiyon Butonları */
+        .action-buttons { display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
+        .action-buttons button { flex: 1; min-width: 120px; }
+        .btn-mic { background: var(--success); }
+        .btn-mic.muted { background: var(--danger); }
+        .btn-cam { background: #4f545c; }
+        .btn-cam.active { background: var(--success); }
+        .btn-share { background: #4f545c; }
+        .btn-share.active { background: var(--accent); }
+        .btn-leave { background: var(--danger); }
+        .btn-leave:hover { background: #c92a2f; }
+
+        /* Ana Arayüz Düzeni */
         #app-interface { display: none; gap: 20px; flex-wrap: wrap; }
         
-        #video-container { width: 100%; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+        #video-container { 
+            width: 100%; display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; 
+            background: var(--bg-main); padding: 15px; border-radius: 10px; display: none;
+        }
         #video-container video {
-            max-width: 100%; max-height: 500px; border-radius: 8px; background: #000;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            flex: 1 1 300px; max-width: 100%; max-height: 400px; object-fit: cover;
+            border-radius: 8px; background: #000; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
 
-        .users-panel { flex: 1; min-width: 250px; background: #2b2d31; padding: 15px; border-radius: 8px; }
+        .panels-wrapper { display: flex; gap: 20px; width: 100%; flex-wrap: wrap; }
+        .panel { background: var(--bg-panel); padding: 20px; border-radius: 10px; flex: 1; min-width: 300px; }
+        .panel-title { margin-bottom: 15px; color: var(--text-muted); font-size: 13px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; }
+
+        /* Kullanıcı Listesi */
         .user-item {
             display: flex; justify-content: space-between; align-items: center;
-            background: #1e1f22; padding: 10px 15px; border-radius: 8px; margin-bottom: 10px;
+            background: var(--bg-main); padding: 12px 15px; border-radius: 8px; margin-bottom: 10px;
             border: 2px solid transparent; transition: all 0.2s ease;
         }
         .user-item.speaking {
-            border-color: #23a55a; box-shadow: 0 0 12px rgba(35, 165, 90, 0.4); transform: translateY(-2px);
+            border-color: var(--success); box-shadow: 0 0 10px rgba(35, 165, 90, 0.2); 
         }
-        .volume-slider { width: 80px; cursor: pointer; }
+        .volume-slider { width: 90px; cursor: pointer; accent-color: var(--accent); }
 
-        .chat-panel { flex: 1.5; min-width: 300px; background: #2b2d31; padding: 15px; border-radius: 8px; display: flex; flex-direction: column; }
-        .chat-messages { flex: 1; height: 250px; overflow-y: auto; margin-bottom: 15px; font-size: 14px; }
-        .chat-msg { margin-bottom: 8px; line-height: 1.4; word-wrap: break-word;}
-        .chat-msg strong { color: #5865f2; }
-        .sys-msg { color: #949ba4; font-size: 12px; font-style: italic; }
+        /* Sohbet */
+        .chat-panel { display: flex; flex-direction: column; }
+        .chat-messages { flex: 1; min-height: 300px; max-height: 400px; overflow-y: auto; margin-bottom: 15px; font-size: 14.5px; padding-right: 10px; }
+        .chat-messages::-webkit-scrollbar { width: 8px; }
+        .chat-messages::-webkit-scrollbar-thumb { background: #1a1b1e; border-radius: 4px; }
+        .chat-msg { margin-bottom: 10px; line-height: 1.5; word-wrap: break-word; background: var(--bg-main); padding: 10px 12px; border-radius: 8px; }
+        .chat-msg strong { color: var(--accent); }
+        .sys-msg { color: var(--text-muted); font-size: 13px; font-style: italic; text-align: center; margin: 10px 0; }
         .chat-input-area { display: flex; gap: 10px; }
-        .chat-input-area input { margin: 0; }
-        .chat-input-area button { width: auto; padding: 0 20px; }
-
-        #status { text-align: center; margin-top: 15px; font-size: 13px; color: #949ba4; }
+        .chat-input-area input { margin: 0; flex: 1; }
         
-        #settings-panel { display: none; background: #1e1f22; padding: 15px; border-radius: 8px; margin-top: 15px; }
-        select { width: 100%; padding: 8px; margin: 8px 0; background: #2b2d31; color: white; border: 1px solid #4f545c; border-radius: 4px; outline: none; }
-        .checkbox-container { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
-        .checkbox-container input { width: auto; }
+        #status { text-align: center; margin-top: 15px; font-size: 14px; color: var(--text-muted); height: 20px;}
+        
+        /* Ayarlar */
+        #settings-panel { display: none; background: var(--bg-main); padding: 15px; border-radius: 8px; margin-top: 15px; border: 1px solid #4f545c; }
+        select { width: 100%; padding: 10px; margin: 8px 0; background: var(--bg-panel); color: white; border: 1px solid #4f545c; border-radius: 6px; outline: none; }
+        .checkbox-container { display: flex; align-items: center; gap: 10px; margin-top: 15px; }
+        .checkbox-container input { width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent); }
+        .checkbox-container label { font-size: 14px; color: var(--text-main); cursor: pointer; }
     </style>
 </head>
 <body>
 
     <div class="card">
-        <h2 id="main-title">🔊 Ses Odası</h2>
+        <h2 id="main-title">🔊 Ses & Görüntü Odası</h2>
         
+        <!-- GİRİŞ EKRANI -->
         <div id="login-form">
-            <input type="text" id="username" placeholder="Adın (örn: Emir)">
-            <input type="text" id="roomname" placeholder="Oda Adı (örn: muhabbet)">
-            <button onclick="joinRoom()">Odaya Katıl / Oluştur</button>
-            <div id="status">Bağlantı bekleniyor...</div>
+            <input type="text" id="username" placeholder="Adın (örn: Emir)" autocomplete="off">
+            <input type="text" id="roomname" placeholder="Oda Adı (örn: muhabbet)" autocomplete="off">
+            <button id="login-btn" onclick="joinRoom()">Odaya Katıl / Oluştur</button>
+            <div id="status"></div>
         </div>
 
-        <div id="video-container"></div>
-
+        <!-- ANA UYGULAMA ARAYÜZÜ -->
         <div id="app-interface">
-            <div class="users-panel">
-                <div style="margin-bottom: 15px; color:#949ba4; font-size: 14px;">Odadakiler ve Ses Ayarları</div>
-                <div id="user-items"></div>
-                
-                <div class="action-buttons">
-                    <button id="mute-btn" class="mute-btn" onclick="toggleMute()">Mikrofon</button>
-                    <button id="share-btn" class="share-btn" onclick="toggleScreenShare()">📺 Yayın</button>
-                    <button id="invite-btn" class="invite-btn" onclick="copyInviteLink()">🔗 Davet Linki</button>
-                    <button id="settings-btn" class="settings-btn" onclick="toggleSettings()">⚙️ Ayarlar</button>
-                </div>
+            <!-- Video Alanı (Biri kamera açtığında görünür olur) -->
+            <div id="video-container"></div>
 
-                <!-- Ayarlar Paneli -->
-                <div id="settings-panel">
-                    <h3 style="margin-top: 0; font-size: 14px; color: #fff;">Donanım Ayarları</h3>
-                    <label style="font-size: 13px; color: #949ba4;">Mikrofon Seç:</label>
-                    <select id="mic-select" onchange="changeMicrophone(this.value)">
-                        <option value="">Yükleniyor...</option>
-                    </select>
+            <div class="panels-wrapper">
+                <!-- Kullanıcılar ve Kontroller -->
+                <div class="panel">
+                    <div class="panel-title">👥 Odadakiler & Ayarlar</div>
+                    <div id="user-items"></div>
+                    
+                    <div class="action-buttons">
+                        <button id="mute-btn" class="btn-mic" onclick="toggleMute()">🎙️ Mikrofon Kapat</button>
+                        <button id="cam-btn" class="btn-cam" onclick="toggleCamera()">📹 Kamera Aç</button>
+                        <button id="share-btn" class="btn-share" onclick="toggleScreenShare()">📺 Ekran Paylaş</button>
+                        <button id="settings-btn" class="btn-share" onclick="toggleSettings()">⚙️ Ayarlar</button>
+                        <button class="btn-share" onclick="copyInviteLink()">🔗 Davet Linki</button>
+                        <button class="btn-leave" onclick="leaveRoom()">🚪 Odadan Ayrıl</button>
+                    </div>
 
-                    <div class="checkbox-container">
-                        <input type="checkbox" id="noise-suppression-toggle" checked onchange="toggleNoiseSuppression(this.checked)">
-                        <label for="noise-suppression-toggle" style="font-size: 13px; color: #949ba4; cursor: pointer;">Yapay Zeka Arka Plan Gürültü Engelleme</label>
+                    <!-- Donanım Ayarları -->
+                    <div id="settings-panel">
+                        <div class="panel-title" style="margin-bottom: 5px;">Donanım Ayarları</div>
+                        <label style="font-size: 13px; color: var(--text-muted);">Mikrofon Seç:</label>
+                        <select id="mic-select" onchange="changeMicrophone(this.value)">
+                            <option value="">Yükleniyor...</option>
+                        </select>
+
+                        <div class="checkbox-container">
+                            <input type="checkbox" id="noise-suppression-toggle" checked onchange="toggleNoiseSuppression(this.checked)">
+                            <label for="noise-suppression-toggle">Yapay Zeka Arka Plan Gürültü Engelleme (Krisp AI)</label>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="chat-panel">
-                <div class="chat-messages" id="chat-messages">
-                    <div class="sys-msg">Odaya giriş yapıldı. Mesajlar uçtan uca şifrelidir.</div>
-                </div>
-                <div class="chat-input-area">
-                    <input type="text" id="chat-input" placeholder="Mesaj yaz..." onkeypress="if(event.key === 'Enter') sendMessage()">
-                    <button onclick="sendMessage()">Gönder</button>
+                <!-- Sohbet Alanı -->
+                <div class="panel chat-panel">
+                    <div class="panel-title">💬 Oda Sohbeti</div>
+                    <div class="chat-messages" id="chat-messages">
+                        <div class="sys-msg">Odaya giriş yapıldı. Mesajlar uçtan uca şifrelidir.</div>
+                    </div>
+                    <div class="chat-input-area">
+                        <input type="text" id="chat-input" placeholder="Mesaj yaz..." onkeypress="if(event.key === 'Enter') sendMessage()" autocomplete="off">
+                        <button onclick="sendMessage()">Gönder</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -134,11 +178,25 @@
     <script>
         let room;
         let isMuted = false;
+        let isVideoEnabled = false;
         let isSharingScreen = false;
         let currentRoomName = "Lobi"; 
         const userVolumes = {}; 
         const audioElements = {}; 
         let krispProcessor;
+
+        // XSS (Cross-Site Scripting) Koruması - GÜVENLİK YAMASI
+        function escapeHTML(str) {
+            return str.replace(/[&<>'"]/g, 
+                tag => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[tag] || tag)
+            );
+        }
 
         window.addEventListener('DOMContentLoaded', () => {
             const urlParams = new URLSearchParams(window.location.search);
@@ -147,32 +205,33 @@
                 const roomInput = document.getElementById('roomname');
                 roomInput.value = roomParam;
                 roomInput.readOnly = true; 
-                roomInput.style.opacity = '0.6';
-                document.getElementById('main-title').innerText = `🔊 ${roomParam} Odasına Davetlisin`;
+                roomInput.style.opacity = '0.7';
+                document.getElementById('main-title').innerText = `🔊 ${escapeHTML(roomParam)} Odasına Davetlisin`;
             }
         });
 
         function copyInviteLink() {
             const inviteUrl = `${window.location.origin}?room=${encodeURIComponent(currentRoomName)}`;
             navigator.clipboard.writeText(inviteUrl).then(() => {
-                const btn = document.getElementById('invite-btn');
-                btn.innerText = "✅ Kopyalandı!";
-                setTimeout(() => { btn.innerText = "🔗 Davet Linki"; }, 2000);
+                alert("Davet linki kopyalandı!");
             });
         }
 
         async function joinRoom() {
             const username = document.getElementById('username').value.trim();
             currentRoomName = document.getElementById('roomname').value.trim() || "Lobi"; 
-            if (!username) return alert("Lütfen adınızı girin!");
+            if (!username) {
+                showStatus("Lütfen adınızı girin!", true);
+                return;
+            }
 
-            document.getElementById('status').innerText = "Bağlanılıyor...";
+            showStatus("Bağlanılıyor...");
 
             try {
+                // Not: Token sisteminiz için backend URL'nizin çalıştığından emin olun.
                 const response = await fetch(`/get-token?username=${encodeURIComponent(username)}&room=${encodeURIComponent(currentRoomName)}`);
+                if (!response.ok) throw new Error("Token alınamadı. Backend sunucunuzu kontrol edin.");
                 const data = await response.json();
-
-                const isNoiseSuppressionOn = document.getElementById('noise-suppression-toggle').checked;
 
                 room = new LivekitClient.Room({ 
                     adaptiveStream: true, 
@@ -184,80 +243,98 @@
                     }
                 });
 
-                room.on(LivekitClient.RoomEvent.ActiveSpeakersChanged, (speakers) => {
-                    document.querySelectorAll('.user-item').forEach(el => el.classList.remove('speaking'));
-                    speakers.forEach(p => {
-                        const el = document.getElementById(`user-${p.identity}`);
-                        if(el) el.classList.add('speaking');
-                    });
-                });
-
-                room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
-                    if (track.kind === LivekitClient.Track.Kind.Audio) {
-                        const audioElement = track.attach();
-                        audioElements[participant.identity] = audioElement;
-                        if(userVolumes[participant.identity] !== undefined) {
-                            audioElement.volume = userVolumes[participant.identity];
-                        }
-                        document.body.appendChild(audioElement);
-                    } else if (track.kind === LivekitClient.Track.Kind.Video) {
-                        const videoElement = track.attach();
-                        videoElement.id = `video-${participant.identity}`;
-                        document.getElementById('video-container').appendChild(videoElement);
-                    }
-                });
-
-                room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
-                    track.detach();
-                    if (track.kind === LivekitClient.Track.Kind.Audio) {
-                        delete audioElements[participant.identity];
-                    } else if (track.kind === LivekitClient.Track.Kind.Video) {
-                        const el = document.getElementById(`video-${participant.identity}`);
-                        if(el) el.remove();
-                    }
-                });
-
-                room.on(LivekitClient.RoomEvent.ParticipantConnected, (p) => {
-                    appendSysMsg(`${p.identity.split('_')[0]} odaya katıldı.`);
-                    renderUsers();
-                });
-
-                room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (p) => {
-                    appendSysMsg(`${p.identity.split('_')[0]} odadan ayrıldı.`);
-                    renderUsers();
-                });
-
-                room.on(LivekitClient.RoomEvent.DataReceived, (payload, participant) => {
-                    const msg = new TextDecoder().decode(payload);
-                    const senderName = participant ? participant.identity.split('_')[0] : "Bilinmeyen";
-                    appendChat(senderName, msg);
-                });
+                setupRoomEvents();
 
                 await room.connect(data.url, data.token);
                 await room.localParticipant.setMicrophoneEnabled(true);
 
+                // Arayüz geçişi
                 document.getElementById('login-form').style.display = "none";
                 document.getElementById('app-interface').style.display = "flex";
-                document.getElementById('main-title').innerText = `🔊 Oda: ${currentRoomName}`;
+                document.getElementById('main-title').innerText = `🔊 Oda: ${escapeHTML(currentRoomName)}`;
                 renderUsers();
 
-                if (isNoiseSuppressionOn) {
+                if (document.getElementById('noise-suppression-toggle').checked) {
                     await toggleNoiseSuppression(true);
                 }
 
             } catch (error) {
-                document.getElementById('status').innerText = "Hata: " + error.message;
+                showStatus("Hata: " + error.message, true);
+                console.error(error);
+            }
+        }
+
+        function setupRoomEvents() {
+            room.on(LivekitClient.RoomEvent.ActiveSpeakersChanged, (speakers) => {
+                document.querySelectorAll('.user-item').forEach(el => el.classList.remove('speaking'));
+                speakers.forEach(p => {
+                    const el = document.getElementById(`user-${p.identity}`);
+                    if(el) el.classList.add('speaking');
+                });
+            });
+
+            room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+                if (track.kind === LivekitClient.Track.Kind.Audio) {
+                    const audioElement = track.attach();
+                    audioElements[participant.identity] = audioElement;
+                    if(userVolumes[participant.identity] !== undefined) {
+                        audioElement.volume = userVolumes[participant.identity];
+                    }
+                    document.body.appendChild(audioElement);
+                } else if (track.kind === LivekitClient.Track.Kind.Video) {
+                    document.getElementById('video-container').style.display = "flex";
+                    const videoElement = track.attach();
+                    videoElement.id = `video-${participant.identity}`;
+                    document.getElementById('video-container').appendChild(videoElement);
+                }
+            });
+
+            room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+                track.detach();
+                if (track.kind === LivekitClient.Track.Kind.Audio) {
+                    if (audioElements[participant.identity]) {
+                        audioElements[participant.identity].remove();
+                        delete audioElements[participant.identity];
+                    }
+                } else if (track.kind === LivekitClient.Track.Kind.Video) {
+                    const el = document.getElementById(`video-${participant.identity}`);
+                    if(el) el.remove();
+                    checkVideoContainer();
+                }
+            });
+
+            room.on(LivekitClient.RoomEvent.ParticipantConnected, (p) => {
+                appendSysMsg(`${escapeHTML(p.identity.split('_')[0])} odaya katıldı.`);
+                renderUsers();
+            });
+
+            room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (p) => {
+                appendSysMsg(`${escapeHTML(p.identity.split('_')[0])} odadan ayrıldı.`);
+                renderUsers();
+            });
+
+            room.on(LivekitClient.RoomEvent.DataReceived, (payload, participant) => {
+                const msg = new TextDecoder().decode(payload);
+                const senderName = participant ? participant.identity.split('_')[0] : "Bilinmeyen";
+                appendChat(senderName, msg);
+            });
+        }
+
+        function checkVideoContainer() {
+            const container = document.getElementById('video-container');
+            if (container.children.length === 0) {
+                container.style.display = "none";
             }
         }
 
         function renderUsers() {
             const listDiv = document.getElementById('user-items');
-            listDiv.innerHTML = '';
+            listDiv.innerHTML = ''; // Güvenli, çünkü içeriği biz oluşturuyoruz
             
             const myName = document.getElementById('username').value.trim();
             listDiv.innerHTML += `
                 <div class="user-item" id="user-${room.localParticipant.identity}">
-                    <span>👤 <strong>${myName}</strong> (Sen)</span>
+                    <span>👤 <strong>${escapeHTML(myName)}</strong> (Sen)</span>
                 </div>
             `;
 
@@ -268,7 +345,7 @@
                 
                 listDiv.innerHTML += `
                     <div class="user-item" id="user-${identity}">
-                        <span>🎙️ ${name}</span>
+                        <span>🎙️ ${escapeHTML(name)}</span>
                         <input type="range" min="0" max="1" step="0.01" value="${vol}" class="volume-slider" title="Sesi ayarla" oninput="changeVolume('${identity}', this.value)">
                     </div>
                 `;
@@ -282,10 +359,45 @@
 
         async function toggleMute() {
             if (!room) return;
-            isMuted = !isMuted;
-            await room.localParticipant.setMicrophoneEnabled(!isMuted);
-            const btn = document.getElementById('mute-btn');
-            isMuted ? btn.classList.add('active') : btn.classList.remove('active');
+            try {
+                isMuted = !isMuted;
+                await room.localParticipant.setMicrophoneEnabled(!isMuted);
+                const btn = document.getElementById('mute-btn');
+                
+                if (isMuted) {
+                    btn.classList.add('muted');
+                    btn.innerHTML = '🔇 Mikrofon Kapalı';
+                } else {
+                    btn.classList.remove('muted');
+                    btn.innerHTML = '🎙️ Mikrofon Kapat';
+                }
+            } catch (err) {
+                console.error("Mikrofon hatası:", err);
+            }
+        }
+
+        // YENİ EKLENEN ÖZELLİK: KAMERA KONTROLÜ
+        async function toggleCamera() {
+            if (!room) return;
+            try {
+                isVideoEnabled = !isVideoEnabled;
+                await room.localParticipant.setCameraEnabled(isVideoEnabled);
+                const btn = document.getElementById('cam-btn');
+                
+                if (isVideoEnabled) {
+                    btn.classList.add('active');
+                    btn.innerHTML = '🚫 Kamerayı Kapat';
+                    document.getElementById('video-container').style.display = "flex";
+                } else {
+                    btn.classList.remove('active');
+                    btn.innerHTML = '📹 Kamera Aç';
+                    checkVideoContainer();
+                }
+            } catch (err) {
+                console.error("Kamera açılamadı (İzin reddedilmiş olabilir):", err);
+                isVideoEnabled = false;
+                alert("Kamera açılamadı. Tarayıcı izinlerinizi kontrol edin.");
+            }
         }
 
         async function toggleScreenShare() {
@@ -294,11 +406,46 @@
                 isSharingScreen = !isSharingScreen;
                 await room.localParticipant.setScreenShareEnabled(isSharingScreen);
                 const btn = document.getElementById('share-btn');
-                isSharingScreen ? btn.classList.add('active') : btn.classList.remove('active');
+                
+                if (isSharingScreen) {
+                    btn.classList.add('active');
+                    btn.innerHTML = '⏹️ Yayını Durdur';
+                    document.getElementById('video-container').style.display = "flex";
+                } else {
+                    btn.classList.remove('active');
+                    btn.innerHTML = '📺 Ekran Paylaş';
+                    checkVideoContainer();
+                }
             } catch (err) {
-                console.error("Ekran paylaşımı hatası:", err);
+                console.error("Ekran paylaşımı iptal edildi veya hata oluştu:", err);
                 isSharingScreen = false;
             }
+        }
+
+        // YENİ EKLENEN ÖZELLİK: ODADAN AYRILMA
+        async function leaveRoom() {
+            if (room) {
+                await room.disconnect();
+                room = null;
+            }
+            // Arayüzü başlangıç haline döndür
+            document.getElementById('app-interface').style.display = "none";
+            document.getElementById('login-form').style.display = "block";
+            document.getElementById('video-container').innerHTML = '';
+            document.getElementById('chat-messages').innerHTML = '<div class="sys-msg">Odaya giriş yapıldı. Mesajlar uçtan uca şifrelidir.</div>';
+            document.getElementById('main-title').innerText = "🔊 Ses & Görüntü Odası";
+            
+            isMuted = false;
+            isVideoEnabled = false;
+            isSharingScreen = false;
+            document.getElementById('mute-btn').className = 'btn-mic';
+            document.getElementById('mute-btn').innerHTML = '🎙️ Mikrofon Kapat';
+            document.getElementById('cam-btn').className = 'btn-cam';
+            document.getElementById('cam-btn').innerHTML = '📹 Kamera Aç';
+            document.getElementById('share-btn').className = 'btn-share';
+            document.getElementById('share-btn').innerHTML = '📺 Ekran Paylaş';
+            
+            showStatus("");
         }
 
         async function toggleSettings() {
@@ -340,12 +487,11 @@
 
                 if (isEnabled) {
                     if (!krispProcessor) {
-                        // Dinamik ESM Modül İçe Aktarımı (Hata Çözümü)
                         const krispModule = await import('https://cdn.jsdelivr.net/npm/@livekit/krisp-noise-filter/+esm');
                         krispProcessor = krispModule.KrispNoiseFilter();
                     }
                     await micTrack.setProcessor(krispProcessor);
-                    console.log("Krisp AI Gürültü Engelleme Aktif Edildi.");
+                    console.log("Krisp AI Gürültü Engelleme Aktif.");
                 } else {
                     if (krispProcessor) {
                         await micTrack.stopProcessor();
@@ -353,7 +499,7 @@
                     }
                 }
             } catch (err) {
-                console.error("Gürültü engelleme sırasında hata oluştu:", err);
+                console.error("Gürültü engelleme sırasında hata:", err);
             }
         }
 
@@ -361,6 +507,7 @@
             const input = document.getElementById('chat-input');
             const text = input.value.trim();
             if(!text || !room) return;
+            
             room.localParticipant.publishData(new TextEncoder().encode(text), { reliable: true });
             appendChat("Sen", text);
             input.value = ''; 
@@ -368,14 +515,21 @@
 
         function appendChat(sender, msg) {
             const box = document.getElementById('chat-messages');
-            box.innerHTML += `<div class="chat-msg"><strong>${sender}:</strong> ${msg}</div>`;
+            // GÜVENLİK UYGULAMASI: HTML taglerini filtreliyoruz.
+            box.innerHTML += `<div class="chat-msg"><strong>${escapeHTML(sender)}:</strong> ${escapeHTML(msg)}</div>`;
             box.scrollTop = box.scrollHeight; 
         }
 
         function appendSysMsg(msg) {
             const box = document.getElementById('chat-messages');
-            box.innerHTML += `<div class="sys-msg">${msg}</div>`;
+            box.innerHTML += `<div class="sys-msg">${escapeHTML(msg)}</div>`;
             box.scrollTop = box.scrollHeight;
+        }
+
+        function showStatus(message, isError = false) {
+            const statusEl = document.getElementById('status');
+            statusEl.innerText = message;
+            statusEl.style.color = isError ? "var(--danger)" : "var(--text-muted)";
         }
     </script>
 </body>
