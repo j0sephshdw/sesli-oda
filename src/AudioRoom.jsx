@@ -25,44 +25,54 @@ export default function AudioRoom({ roomName, onLeave }) {
 
   const [krispProcessor, setKrispProcessor] = useState(null);
   const [isKrispActive, setIsKrispActive] = useState(false);
-  const [krispStatus, setKrispStatus] = useState('⏳ Yükleniyor...');
+  const [krispStatus, setKrispStatus] = useState('⏳ Filtre Yükleniyor...');
+  const [inviteText, setInviteText] = useState('🔗 Davet Linki Kopyala');
 
   // Otomatik Sohbet Kaydırma
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  // 1. AŞAMA: Krisp AI Modelini En Başta İndir ve Hazırla
+  // 1. AŞAMA: Krisp AI Modelini Arka Planda Hazırla
   useEffect(() => {
     if (isKrispNoiseFilterSupported()) {
       const processor = KrispNoiseFilter();
       setKrispProcessor(processor);
-      setKrispStatus('Hazır');
+      setKrispStatus('🎧 Gürültü Engelleyici (HAZIR)');
     } else {
-      setKrispStatus('Desteklenmiyor');
+      setKrispStatus('🚫 Tarayıcı Desteklemiyor');
     }
   }, []);
 
-  // 2. AŞAMA: Odaya Girilip Mikrofon Açıldığı An ZORLA Devreye Sok (Default AÇIK)
+  // 2. AŞAMA: Mikrofon Açıldığında Yarım Saniye Bekle ve Filtreyi ZORLA Oturt
   useEffect(() => {
+    let timeoutId;
     const autoEnableKrisp = async () => {
-      const track = localParticipant?.getTrackPublication(Track.Source.Microphone)?.track;
-      if (track && isMicrophoneEnabled && krispProcessor && !isKrispActive) {
-        try {
-          setKrispStatus('Başlatılıyor...');
-          await track.setProcessor(krispProcessor);
-          setIsKrispActive(true);
-          setKrispStatus('Gürültü Engelleyici (AÇIK)');
-        } catch (err) {
-          console.error("Krisp otomatik başlatılamadı:", err);
-          setKrispStatus('Hata: Açılamadı');
-        }
-      } else if (!isMicrophoneEnabled) {
-         setKrispStatus('Mikrofon Kapalı');
+      if (!isMicrophoneEnabled) {
          setIsKrispActive(false);
+         setKrispStatus('🎧 Mikrofon Kapalı');
+         return;
       }
+
+      // Track'in (ses kanalının) tam oluşması için 500ms zeki bekleme
+      timeoutId = setTimeout(async () => {
+         const track = localParticipant?.getTrackPublication(Track.Source.Microphone)?.track;
+         if (track && krispProcessor && !isKrispActive) {
+           try {
+             setKrispStatus('🎧 Başlatılıyor...');
+             await track.setProcessor(krispProcessor);
+             setIsKrispActive(true);
+             setKrispStatus('🎧 Gürültü Engelleyici (AÇIK)');
+           } catch(e) {
+             console.error("Krisp hatası:", e);
+             setKrispStatus('🎧 Gürültü Engelleyici (HATA)');
+           }
+         }
+      }, 500); 
     };
+
     autoEnableKrisp();
+    return () => clearTimeout(timeoutId);
   }, [isMicrophoneEnabled, localParticipant, krispProcessor]);
 
   // Giriş / Çıkış Ses Efektleri (SFX)
@@ -87,15 +97,11 @@ export default function AudioRoom({ roomName, onLeave }) {
         } catch(e) {}
     };
 
-    const handleJoin = () => playTone('join');
-    const handleLeave = () => playTone('leave');
-
-    room.on(RoomEvent.ParticipantConnected, handleJoin);
-    room.on(RoomEvent.ParticipantDisconnected, handleLeave);
-
+    room.on(RoomEvent.ParticipantConnected, () => playTone('join'));
+    room.on(RoomEvent.ParticipantDisconnected, () => playTone('leave'));
     return () => {
-      room.off(RoomEvent.ParticipantConnected, handleJoin);
-      room.off(RoomEvent.ParticipantDisconnected, handleLeave);
+      room.removeAllListeners(RoomEvent.ParticipantConnected);
+      room.removeAllListeners(RoomEvent.ParticipantDisconnected);
     }
   }, [room]);
 
@@ -103,33 +109,36 @@ export default function AudioRoom({ roomName, onLeave }) {
     if (msg.trim()) { send(msg); setMsg(''); }
   };
 
+  // Modern Link Kopyalama (Alert yerine buton üstünde yazar)
   const copyInvite = () => {
     const url = `${window.location.origin}?room=${encodeURIComponent(roomName)}`;
     navigator.clipboard.writeText(url);
-    alert('✅ Davet linki kopyalandı! Arkadaşlarına gönderebilirsin.');
+    setInviteText('✅ Kopyalandı!');
+    setTimeout(() => setInviteText('🔗 Davet Linki Kopyala'), 2000);
   };
 
   const sendEmoji = (emoji) => {
     send(`Tepki gönderdi: ${emoji}`);
   };
 
+  // Manuel Krisp Aç/Kapat Kontrolü
   const toggleKrisp = async () => {
-    if (!krispProcessor) return alert("Filtre henüz hazır değil veya desteklenmiyor.");
+    if (!krispProcessor) return;
     const track = localParticipant?.getTrackPublication(Track.Source.Microphone)?.track;
-    if (!track || !isMicrophoneEnabled) return alert("Filtreyi değiştirmek için mikrofonunuz açık olmalı.");
+    if (!track || !isMicrophoneEnabled) return;
 
     try {
       if (isKrispActive) {
         await track.stopProcessor();
         setIsKrispActive(false);
-        setKrispStatus('Gürültü Engelleyici (KAPALI)');
+        setKrispStatus('🎧 Gürültü Engelleyici (KAPALI)');
       } else {
         await track.setProcessor(krispProcessor);
         setIsKrispActive(true);
-        setKrispStatus('Gürültü Engelleyici (AÇIK)');
+        setKrispStatus('🎧 Gürültü Engelleyici (AÇIK)');
       }
     } catch (err) {
-      alert("Filtre değiştirilemedi: " + err.message);
+      console.error(err);
     }
   };
 
@@ -144,7 +153,7 @@ export default function AudioRoom({ roomName, onLeave }) {
             <span className="live-badge">🔴 Canlı</span>
             <span className="people-count">👥 {participants.length} Kişi</span>
           </div>
-          <button onClick={copyInvite} className="invite-btn">🔗 Davet Linki Kopyala</button>
+          <button onClick={copyInvite} className="invite-btn">{inviteText}</button>
         </header>
 
         <div className={`dynamic-view-area ${screenTracks.length > 0 ? 'has-screen' : ''}`}>
@@ -162,11 +171,15 @@ export default function AudioRoom({ roomName, onLeave }) {
                 <div className="quality-indicator"><ConnectionQualityIndicator participant={p} /></div>
                 <div className="avatar">👤</div>
                 <div className="name">{p.identity.split('_')[0]}</div>
-                {p.isSpeaking && (
+                
+                {/* DİSCORD TARZI MİKROFON DURUMU GÖSTERGESİ */}
+                {!p.isMicrophoneEnabled ? (
+                    <div className="muted-badge">🔇 Sustu</div>
+                ) : p.isSpeaking ? (
                    <div className="waveform">
                      <span className="bar"></span><span className="bar"></span><span className="bar"></span>
                    </div>
-                )}
+                ) : null}
                 
                 {p.identity !== localParticipant.identity && (
                   <input 
@@ -194,14 +207,7 @@ export default function AudioRoom({ roomName, onLeave }) {
           <div className="main-controls">
             <button 
               className={`ctrl-btn ${!isMicrophoneEnabled ? 'muted' : 'active'}`} 
-              onClick={() => {
-                // Mikrofonu açarken gürültü ayarlarını ZORLA basıyoruz
-                localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled, {
-                  echoCancellation: true,
-                  noiseSuppression: true,
-                  autoGainControl: false 
-                });
-              }}
+              onClick={() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
             >
               {isMicrophoneEnabled ? '🎙️ Mikrofon Açık' : '🔇 Mikrofon Kapalı'}
             </button>
@@ -209,8 +215,9 @@ export default function AudioRoom({ roomName, onLeave }) {
             <button 
               className={`ctrl-btn ${isKrispActive ? 'krisp-active' : 'krisp-inactive'}`} 
               onClick={toggleKrisp}
+              disabled={!isMicrophoneEnabled}
             >
-              🎧 {krispStatus}
+              {krispStatus}
             </button>
             
             <button className={`ctrl-btn ${isScreenShareEnabled ? 'active' : ''}`} onClick={() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled)}>

@@ -573,3 +573,17 @@ body {
 .krisp-inactive {
     background: #4f545c; /* Kapalıysa gri */
 }
+/* DİSCORD TARZI SUSTU (MUTE) ROZETİ */
+.muted-badge {
+    position: absolute;
+    bottom: 12px;
+    background: #da373c;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 2px 8px rgba(218, 55, 60, 0.4);
+}
