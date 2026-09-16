@@ -1310,3 +1310,96 @@ body {
     background-color: #57F287; /* Normal yeşilden daha parlak bir yeşil */
     box-shadow: 0 0 8px rgba(87, 242, 135, 0.6);
 }
+/* ==========================================================================
+   18. SİNEMATİK MOD (AUTO-HIDE), BİLDİRİMLER (TOASTS) VE AĞ GÖSTERGESİ
+   ========================================================================== */
+
+/* 1. Tiyatro/Sinematik Mod Geçişleri */
+.room-controls-wrapper {
+    transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+    /* Fare 3.5 saniye durduğunda panelleri şık bir şekilde aşağı kaydırarak siler */
+    .room-controls-wrapper.idle {
+        opacity: 0;
+        transform: translateY(20px);
+        pointer-events: none; /* Gizliyken yanlışlıkla tıklanmasını engeller */
+    }
+
+/* Üst ve yan etiketleri fare durduğunda uçururuz (Tam odaklanma) */
+.idle-hidden {
+    opacity: 0 !important;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+}
+
+/* 2. Pop-up Bildirimler (Toasts) */
+.toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 99999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.toast {
+    background: rgba(30, 31, 34, 0.95);
+    backdrop-filter: blur(8px);
+    color: white;
+    padding: 12px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    border-left: 4px solid #5865f2; /* Klasik Mavi */
+    animation: slideInRightToast 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+    .toast.success {
+        border-left-color: #23a55a; /* Giriş Yaptı (Yeşil) */
+    }
+
+    .toast.error {
+        border-left-color: #da373c; /* Çıkış Yaptı (Kırmızı) */
+    }
+
+@keyframes slideInRightToast {
+    from {
+        transform: translateX(120%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* 3. Discord Stili Sol Alt Bağlantı (Ping) Göstergesi */
+.network-status {
+    position: fixed;
+    bottom: 15px;
+    left: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 800;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.55);
+    padding: 6px 12px;
+    border-radius: 20px;
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: opacity 0.4s ease;
+    user-select: none;
+    letter-spacing: 0.2px;
+}
+
+    .network-status .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+    }

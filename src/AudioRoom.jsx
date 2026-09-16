@@ -9,9 +9,10 @@ import {
   TrackLoop,
   ParticipantTile,
   ConnectionQualityIndicator,
-  VideoTrack
+  VideoTrack,
+  useConnectionState // YENİ: Bağlantı durumu için
 } from '@livekit/components-react';
-import { Track, RoomEvent } from 'livekit-client';
+import { Track, RoomEvent, ConnectionState } from 'livekit-client';
 import { KrispNoiseFilter, isKrispNoiseFilterSupported } from '@livekit/krisp-noise-filter';
 
 const getAvatarColor = (name) => {
@@ -21,11 +22,28 @@ const getAvatarColor = (name) => {
   return colors[Math.abs(hash) % colors.length];
 };
 
+const renderMessageText = (text, myDisplayName) => {
+  const parts = text.split(/(https?:\/\/[^\s]+|\*\*.*?\*\*|@[^\s]+)/g);
+  return parts.map((part, i) => {
+    if (part.match(/https?:\/\/[^\s]+/)) {
+      return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">{part}</a>;
+    } else if (part.match(/\*\*(.*?)\*\*/)) {
+      return <strong key={i}>{part.replace(/\*\*/g, '')}</strong>;
+    } else if (part.toLowerCase() === `@${myDisplayName.toLowerCase()}`) {
+      return <span key={i} className="mention-badge">{part}</span>;
+    } else if (part.startsWith('@')) {
+      return <span key={i} className="mention-other">{part}</span>;
+    }
+    return part;
+  });
+};
+
 export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   const room = useRoomContext();
   const participants = useParticipants(); 
   const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled, isCameraEnabled } = useLocalParticipant();
   const screenTracks = useTracks([Track.Source.ScreenShare]);
+  const connectionState = useConnectionState(); // YENİ: Canlı Bağlantı Durumu
 
   const { send, chatMessages } = useChat();
   const [msg, setMsg] = useState('');
@@ -47,21 +65,48 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   const [audioDevices, setAudioDevices] = useState([]);
   const [videoDevices, setVideoDevices] = useState([]);
 
+  // YENİ: Sinematik Mod ve Pop-up (Toast) Bildirim State'leri
+  const [isIdle, setIsIdle] = useState(false);
+  const [toasts, setToasts] = useState([]);
+
   const processorRef = useRef(null);
   const stageRef = useRef(null);
   const prevChatCount = useRef(0);
-
-  // Kendi ismimizi etiketlerde tanımak için alıyoruz
   const myDisplayName = (localParticipant?.name || localParticipant?.identity || '').split('_')[0];
 
-  // YENİ: Admin Yetkisini Katılımcı Bilgilerine İşleme
+  // YENİ: Sinematik Fare Hareketi Algılayıcı (3.5 Saniye Hareketsizlik = Gizle)
+  useEffect(() => {
+    let timeout;
+    const handleMouseMove = () => {
+      setIsIdle(false);
+      clearTimeout(timeout);
+      timeout = setTimeout(() => setIsIdle(true), 3500);
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    // İlk açılışta da sayacı başlat
+    timeout = setTimeout(() => setIsIdle(true), 3500);
+    
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      clearTimeout(timeout);
+    };
+  }, []);
+
+  // YENİ: Pop-up Bildirim (Toast) Ekleyici
+  const addToast = (message, type = 'info') => {
+    const id = Date.now() + Math.random();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4000);
+  };
+
   useEffect(() => {
     if (localParticipant && isAdmin) {
       localParticipant.setAttributes({ ...localParticipant.attributes, admin: 'true' });
     }
   }, [localParticipant, isAdmin]);
 
-  // Cihazları Getir
   useEffect(() => {
     if (showSettings) {
       navigator.mediaDevices.enumerateDevices().then(devices => {
@@ -123,7 +168,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
         gain.gain.setValueAtTime(0.01, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
       } else if (type === 'mention') {
-        // YENİ: Etiketlenme (Mention) Sesi (Yüksek frekanslı ardışık ping)
         osc.type = 'triangle';
         osc.frequency.setValueAtTime(600, ctx.currentTime);
         osc.frequency.setValueAtTime(1200, ctx.currentTime + 0.1);
@@ -137,7 +181,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
       }
       
-      if(type !== 'message' && type !== 'screen_share' && type !== 'mention'){
+      if(!['message', 'screen_share', 'mention'].includes(type)){
          gain.gain.setValueAtTime(0.02, ctx.currentTime);
          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
       }
@@ -162,12 +206,10 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
     }
   };
 
-  // Yeni mesaj geldiğinde Mention kontrolü
   useEffect(() => {
     if (chatMessages.length > prevChatCount.current) {
       const lastMsg = chatMessages[chatMessages.length - 1];
       if (lastMsg.from?.identity !== localParticipant?.identity) {
-        // İsmin geçiyorsa (Büyük/küçük harf duyarsız)
         if (lastMsg.message.toLowerCase().includes(`@${myDisplayName.toLowerCase()}`)) {
             playTone('mention');
         } else {
@@ -242,8 +284,17 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
       } catch(e) {}
     };
 
-    room.on(RoomEvent.ParticipantConnected, () => playTone('join'));
-    room.on(RoomEvent.ParticipantDisconnected, () => playTone('leave'));
+    // YENİ: Bildirim Entegrasyonu
+    room.on(RoomEvent.ParticipantConnected, (p) => {
+      playTone('join');
+      addToast(`🟢 ${p.identity.split('_')[0]} odaya katıldı.`, 'success');
+    });
+    
+    room.on(RoomEvent.ParticipantDisconnected, (p) => {
+      playTone('leave');
+      addToast(`🔴 ${p.identity.split('_')[0]} odadan ayrıldı.`, 'error');
+    });
+    
     room.on(RoomEvent.DataReceived, handleDataReceived);
 
     return () => {
@@ -346,38 +397,30 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   };
 
   const formatTime = (timestamp) => new Date(timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-
-  // YENİ: Gelişmiş Mesaj Renderer (Linkler, Kalın Yazı ve Mentionlar)
-  const renderMessageText = (text) => {
-    // URL, **Kalın** ve @Kullanıcı gibi kelimeleri parçalıyoruz
-    const parts = text.split(/(https?:\/\/[^\s]+|\*\*.*?\*\*|@[^\s]+)/g);
-
-    return parts.map((part, i) => {
-      // 1. Link Kontrolü
-      if (part.match(/https?:\/\/[^\s]+/)) {
-        return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">{part}</a>;
-      } 
-      // 2. Kalın (Bold) Yazı Kontrolü
-      else if (part.match(/\*\*(.*?)\*\*/)) {
-        return <strong key={i}>{part.replace(/\*\*/g, '')}</strong>;
-      } 
-      // 3. Bizim Etiketlenmemiz Kontrolü (@isim)
-      else if (part.toLowerCase() === `@${myDisplayName.toLowerCase()}`) {
-        return <span key={i} className="mention-badge">{part}</span>;
-      } 
-      // 4. Başkalarının Etiketlenmesi Kontrolü
-      else if (part.startsWith('@')) {
-        return <span key={i} className="mention-other">{part}</span>;
-      }
-      return part;
-    });
-  };
-
   const activeTypers = Object.keys(typing).filter(name => name !== myDisplayName);
+
+  // YENİ: Bağlantı Durumu Metin Ayarlayıcı
+  let connText = 'Bağlanıyor...';
+  let connColor = '#faa61a'; // Sarı
+  if (connectionState === ConnectionState.Connected) {
+    connText = 'Ses Bağlantısı Kuruldu';
+    connColor = '#23a55a'; // Yeşil
+  } else if (connectionState === ConnectionState.Reconnecting) {
+    connText = 'Yeniden Bağlanıyor...';
+    connColor = '#da373c'; // Kırmızı
+  }
 
   return (
     <div className="custom-room-layout">
-      {/* Ayarlar Modalı */}
+      {/* YENİ: Pop-up Bildirim Konteyneri (Toasts) */}
+      <div className="toast-container">
+        {toasts.map(toast => (
+          <div key={toast.id} className={`toast ${toast.type}`}>
+            {toast.message}
+          </div>
+        ))}
+      </div>
+
       {showSettings && (
         <div className="settings-modal-overlay" onClick={() => setShowSettings(false)}>
           <div className="settings-modal" onClick={e => e.stopPropagation()}>
@@ -412,7 +455,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
       </div>
 
       <div className="main-panel">
-        <header className="room-header">
+        <header className={`room-header ${isIdle ? 'idle-hidden' : ''}`}>
           <div className="header-info">
             <h3>🔊 {roomName}</h3>
             <span className="live-badge">🔴 Canlı</span>
@@ -443,7 +486,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
               const isUserDeafened = p.attributes?.deafened === 'true';
               const isUserHandRaised = p.attributes?.handRaised === 'true';
               const isUserAfk = p.attributes?.afk === 'true';
-              const isUserAdmin = p.attributes?.admin === 'true'; // YENİ: Admin Yetkisi
+              const isUserAdmin = p.attributes?.admin === 'true';
               
               const displayName = (p.name || p.identity || 'Misafir').split('_')[0];
               const isUserSharingScreen = p.isScreenShareEnabled;
@@ -467,7 +510,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
                   )}
 
                   <div className="card-footer">
-                    {/* YENİ: Oda kurucusu ise adının solunda Altın Taç çıkar */}
                     {isUserAdmin && <span className="admin-crown" title="Oda Kurucusu">👑</span>}
                     <span className="name">{displayName}</span>
                     <span className="status-icons">
@@ -482,7 +524,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
                   )}
                   
                   {(p.identity !== localParticipant?.identity || isCamOn) && (
-                    <div className="card-hover-overlay">
+                    <div className={`card-hover-overlay ${isIdle ? 'idle-hidden' : ''}`}>
                       {isCamOn && (
                         <div className="cam-actions">
                           <button onClick={toggleCardPiP} title="Pencere İçinde Aç">🗗 PiP</button>
@@ -510,7 +552,8 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
           </div>
         </div>
 
-        <footer className="room-controls-wrapper">
+        {/* YENİ: Sinematik Fare Etkileşimli Kontrol Paneli Sınıfı Eklendi */}
+        <footer className={`room-controls-wrapper ${isIdle ? 'idle' : ''}`}>
           <div className="interactive-actions">
             <button onClick={() => sendEmojiReaction('🔥')} className="action-btn">🔥</button>
             <button onClick={() => sendEmojiReaction('👍')} className="action-btn">👍</button>
@@ -557,7 +600,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
           <div className="chat-messages">
             <div className="chat-sys-msg">Mesajlar uçtan uca şifrelidir.</div>
             {chatMessages.map(m => {
-              // Mesajda etiketlenip etiketlenmediğimizi kontrol edip mesaj arka planını sarı yapıyoruz
               const isMentioned = m.message.toLowerCase().includes(`@${myDisplayName.toLowerCase()}`);
               return (
                 <div key={m.id} className={`chat-msg ${isMentioned ? 'mentioned-msg' : ''}`}>
@@ -565,7 +607,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
                     <span className="chat-sender">{(m.from?.name || m.from?.identity || 'Anonim').split('_')[0]}</span>
                     <span className="chat-time">{formatTime(m.timestamp)}</span>
                   </div>
-                  <div className="chat-text">{renderMessageText(m.message)}</div>
+                  <div className="chat-text">{renderMessageText(m.message, myDisplayName)}</div>
                 </div>
               );
             })}
@@ -591,7 +633,13 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
         </div>
       )}
 
-      <div className="watermark-badge-left">
+      {/* YENİ: Discord Tarzı Sol Alt Ağ Bağlantısı Göstergesi */}
+      <div className={`network-status ${isIdle ? 'idle-hidden' : ''}`} style={{ color: connColor }}>
+         <span className="dot" style={{ backgroundColor: connColor, boxShadow: `0 0 8px ${connColor}` }}></span>
+         {connText}
+      </div>
+
+      <div className={`watermark-badge-left ${isIdle ? 'idle-hidden' : ''}`}>
         ⚡ Made by <span>Hacıkopter</span>
       </div>
 
