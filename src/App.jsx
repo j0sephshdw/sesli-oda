@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LiveKitRoom } from '@livekit/components-react';
+import { VideoPresets, ScreenSharePresets } from 'livekit-client';
 import AudioRoom from './AudioRoom';
 import '@livekit/components-styles';
 
@@ -12,7 +13,6 @@ export default function App() {
   const [token, setToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -27,7 +27,12 @@ export default function App() {
 
   const handleJoin = async (e) => {
     e.preventDefault();
-    if (!roomName.trim() || !participantName.trim()) {
+    
+    // GÜVENLİK: İsimleri ve oda adlarını backend ile aynı formata sokuyoruz
+    const safeRoomName = roomName.trim().toLowerCase();
+    const safeParticipantName = participantName.trim();
+
+    if (!safeRoomName || !safeParticipantName) {
       setError('İsim ve Oda Adı zorunludur.');
       return;
     }
@@ -39,14 +44,14 @@ export default function App() {
       const response = await fetch('/api/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomName: roomName.trim(), participantName: participantName.trim(), password }),
+        body: JSON.stringify({ roomName: safeRoomName, participantName: safeParticipantName, password }),
       });
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Bağlantı reddedildi.');
       
-      localStorage.setItem('lastRoom', roomName.trim());
-      localStorage.setItem('lastName', participantName.trim());
+      localStorage.setItem('lastRoom', safeRoomName);
+      localStorage.setItem('lastName', safeParticipantName);
       
       setIsAdmin(data.isAdmin); 
       setToken(data.token);
@@ -62,17 +67,26 @@ export default function App() {
       <LiveKitRoom
         video={false}
         audio={{
-          // YENİ SES GÜÇLENDİRMESİ
-          echoCancellation: true, // Yankıyı engeller
-          noiseSuppression: false, // Tarayıcı filtresini tamamen kapattık ki Krisp AI tam güç çalışsın
-          autoGainControl: true, // DÜZELTME: Sesi az gidenler için bu özellik tekrar açıldı (Ses seviyesini otomatik dengeler)
+          echoCancellation: true,
+          noiseSuppression: false, 
+          autoGainControl: true, 
+        }}
+        options={{
+          adaptiveStream: true, 
+          dynacast: true, 
+          publishDefaults: {
+            videoEncoding: VideoPresets.h360.encoding,
+            videoSimulcastLayers: [VideoPresets.h180, VideoPresets.h360],
+            screenShareEncoding: ScreenSharePresets.h720fps30.encoding,
+            audioBitrate: 32000, 
+          }
         }}
         token={token}
         serverUrl={LIVEKIT_URL}
         onDisconnected={() => setToken('')}
         data-lk-theme="default"
       >
-        <AudioRoom roomName={roomName} isAdmin={isAdmin} onLeave={() => setToken('')} />
+        <AudioRoom roomName={roomName.trim().toLowerCase()} isAdmin={isAdmin} onLeave={() => setToken('')} />
       </LiveKitRoom>
     );
   }
@@ -101,12 +115,12 @@ export default function App() {
               value={roomName} 
               onChange={(e) => setRoomName(e.target.value)} 
               maxLength={20} 
-              placeholder="Örn: Genel Ses"
+              placeholder="Örn: genel ses"
               required 
             />
           </div>
           <div className="form-group">
-            <label>Oda Şifresi (Varsa)</label>
+            <label>Oda Şifresi (Odayı Kuruyorsan Belirle)</label>
             <input 
               type="password" 
               value={password} 

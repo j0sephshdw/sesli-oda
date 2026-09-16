@@ -10,7 +10,7 @@ import {
   ParticipantTile,
   ConnectionQualityIndicator,
   VideoTrack,
-  useConnectionState // YENİ: Bağlantı durumu için
+  useConnectionState
 } from '@livekit/components-react';
 import { Track, RoomEvent, ConnectionState } from 'livekit-client';
 import { KrispNoiseFilter, isKrispNoiseFilterSupported } from '@livekit/krisp-noise-filter';
@@ -43,7 +43,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   const participants = useParticipants(); 
   const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled, isCameraEnabled } = useLocalParticipant();
   const screenTracks = useTracks([Track.Source.ScreenShare]);
-  const connectionState = useConnectionState(); // YENİ: Canlı Bağlantı Durumu
+  const connectionState = useConnectionState(); 
 
   const { send, chatMessages } = useChat();
   const [msg, setMsg] = useState('');
@@ -64,8 +64,10 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   const [showSettings, setShowSettings] = useState(false);
   const [audioDevices, setAudioDevices] = useState([]);
   const [videoDevices, setVideoDevices] = useState([]);
+  
+  // YENİ: Oyuncu Modu (Sohbet Seslerini Susturma)
+  const [muteChatSounds, setMuteChatSounds] = useState(false);
 
-  // YENİ: Sinematik Mod ve Pop-up (Toast) Bildirim State'leri
   const [isIdle, setIsIdle] = useState(false);
   const [toasts, setToasts] = useState([]);
 
@@ -74,7 +76,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   const prevChatCount = useRef(0);
   const myDisplayName = (localParticipant?.name || localParticipant?.identity || '').split('_')[0];
 
-  // YENİ: Sinematik Fare Hareketi Algılayıcı (3.5 Saniye Hareketsizlik = Gizle)
   useEffect(() => {
     let timeout;
     const handleMouseMove = () => {
@@ -83,7 +84,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
       timeout = setTimeout(() => setIsIdle(true), 3500);
     };
     window.addEventListener('mousemove', handleMouseMove);
-    // İlk açılışta da sayacı başlat
     timeout = setTimeout(() => setIsIdle(true), 3500);
     
     return () => {
@@ -92,7 +92,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
     };
   }, []);
 
-  // YENİ: Pop-up Bildirim (Toast) Ekleyici
   const addToast = (message, type = 'info') => {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { id, message, type }]);
@@ -146,6 +145,8 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   };
 
   const playTone = (type) => {
+    if (muteChatSounds && (type === 'message' || type === 'mention')) return; // Sesleri susturma
+    
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtx) return;
@@ -206,6 +207,15 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
     }
   };
 
+  // YENİ: Odadan Atma (Kick) Fonksiyonu
+  const handleKickUser = (targetIdentity, targetName) => {
+    if(window.confirm(`👑 ${targetName} adlı kullanıcıyı odadan atmak istediğinize emin misiniz?`)){
+      const data = JSON.stringify({ type: 'KICK', targetIdentity });
+      room.localParticipant.publishData(new TextEncoder().encode(data), { reliable: true });
+      addToast(`👢 ${targetName} odadan atıldı!`, 'success');
+    }
+  };
+
   useEffect(() => {
     if (chatMessages.length > prevChatCount.current) {
       const lastMsg = chatMessages[chatMessages.length - 1];
@@ -219,7 +229,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
       prevChatCount.current = chatMessages.length;
     }
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages, localParticipant, myDisplayName]);
+  }, [chatMessages, localParticipant, myDisplayName, muteChatSounds]);
 
   useEffect(() => {
     if(screenTracks.length > 0) playTone('screen_share');
@@ -281,18 +291,23 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
         const data = JSON.parse(str);
         if (data.type === 'EMOJI_REACTION') spawnFloatingEmoji(data.emoji);
         if (data.type === 'TYPING') setTyping(prev => ({ ...prev, [data.name]: Date.now() }));
+        
+        // Biri bizi odadan attıysa (KICK kontrolü)
+        if (data.type === 'KICK' && data.targetIdentity === localParticipant?.identity) {
+            alert("Oda kurucusu (Admin) tarafından odadan atıldınız.");
+            handleLeaveRoom();
+        }
       } catch(e) {}
     };
 
-    // YENİ: Bildirim Entegrasyonu
     room.on(RoomEvent.ParticipantConnected, (p) => {
       playTone('join');
-      addToast(`🟢 ${p.identity.split('_')[0]} odaya katıldı.`, 'success');
+      addToast(`🟢 ${p.name || p.identity.split('_')[0]} odaya katıldı.`, 'success');
     });
     
     room.on(RoomEvent.ParticipantDisconnected, (p) => {
       playTone('leave');
-      addToast(`🔴 ${p.identity.split('_')[0]} odadan ayrıldı.`, 'error');
+      addToast(`🔴 ${p.name || p.identity.split('_')[0]} odadan ayrıldı.`, 'error');
     });
     
     room.on(RoomEvent.DataReceived, handleDataReceived);
@@ -302,7 +317,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
       room.removeAllListeners(RoomEvent.ParticipantDisconnected);
       room.removeAllListeners(RoomEvent.DataReceived);
     };
-  }, [room]);
+  }, [room, localParticipant]);
 
   const spawnFloatingEmoji = (emoji) => {
     const id = Date.now() + Math.random();
@@ -399,20 +414,18 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   const formatTime = (timestamp) => new Date(timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
   const activeTypers = Object.keys(typing).filter(name => name !== myDisplayName);
 
-  // YENİ: Bağlantı Durumu Metin Ayarlayıcı
   let connText = 'Bağlanıyor...';
-  let connColor = '#faa61a'; // Sarı
+  let connColor = '#faa61a'; 
   if (connectionState === ConnectionState.Connected) {
     connText = 'Ses Bağlantısı Kuruldu';
-    connColor = '#23a55a'; // Yeşil
+    connColor = '#23a55a'; 
   } else if (connectionState === ConnectionState.Reconnecting) {
     connText = 'Yeniden Bağlanıyor...';
-    connColor = '#da373c'; // Kırmızı
+    connColor = '#da373c'; 
   }
 
   return (
     <div className="custom-room-layout">
-      {/* YENİ: Pop-up Bildirim Konteyneri (Toasts) */}
       <div className="toast-container">
         {toasts.map(toast => (
           <div key={toast.id} className={`toast ${toast.type}`}>
@@ -425,7 +438,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
         <div className="settings-modal-overlay" onClick={() => setShowSettings(false)}>
           <div className="settings-modal" onClick={e => e.stopPropagation()}>
             <div className="settings-header">
-              <h3>⚙️ Cihaz Ayarları</h3>
+              <h3>⚙️ Ayarlar & Cihazlar</h3>
               <button onClick={() => setShowSettings(false)} className="close-btn">✖</button>
             </div>
             <div className="settings-content">
@@ -443,6 +456,20 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
                   {videoDevices.map(d => <option key={d.deviceId} value={d.deviceId}>{d.label || `Kamera ${d.deviceId.slice(0,5)}`}</option>)}
                 </select>
               </div>
+              
+              {/* SOHBET SESİNİ KAPATMA */}
+              <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: '10px', marginTop: '10px', display: 'flex' }}>
+                <input 
+                   type="checkbox" 
+                   id="muteSounds" 
+                   checked={muteChatSounds} 
+                   onChange={e => setMuteChatSounds(e.target.checked)} 
+                   style={{ width: 'auto', cursor: 'pointer', transform: 'scale(1.3)' }} 
+                />
+                <label htmlFor="muteSounds" style={{ marginBottom: 0, cursor: 'pointer', color: '#f2f3f5' }}>
+                  Oyuncu Modu (Sohbet Seslerini Sustur)
+                </label>
+              </div>
             </div>
           </div>
         </div>
@@ -457,7 +484,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
       <div className="main-panel">
         <header className={`room-header ${isIdle ? 'idle-hidden' : ''}`}>
           <div className="header-info">
-            <h3>🔊 {roomName}</h3>
+            <h3>🔊 {roomName.toUpperCase()}</h3>
             <span className="live-badge">🔴 Canlı</span>
             <span className="people-count">👥 {participants.length} Kişi</span>
           </div>
@@ -531,6 +558,14 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
                           <button onClick={toggleCardFullScreen} title="Tam Ekran Yap">⛶ Tam Ekran</button>
                         </div>
                       )}
+                      
+                      {/* ADMİN isek "Odadan At" (Kick) Butonu */}
+                      {isAdmin && p.identity !== localParticipant?.identity && (
+                        <button className="kick-btn" onClick={() => handleKickUser(p.identity, displayName)} title="Bu kullanıcıyı odadan at">
+                          👢 Odadan At
+                        </button>
+                      )}
+
                       {p.identity !== localParticipant?.identity && (
                         <div className="vol-slider-wrapper">
                           <span>Kullanıcı Sesi</span>
@@ -552,7 +587,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
           </div>
         </div>
 
-        {/* YENİ: Sinematik Fare Etkileşimli Kontrol Paneli Sınıfı Eklendi */}
         <footer className={`room-controls-wrapper ${isIdle ? 'idle' : ''}`}>
           <div className="interactive-actions">
             <button onClick={() => sendEmojiReaction('🔥')} className="action-btn">🔥</button>
@@ -633,7 +667,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
         </div>
       )}
 
-      {/* YENİ: Discord Tarzı Sol Alt Ağ Bağlantısı Göstergesi */}
       <div className={`network-status ${isIdle ? 'idle-hidden' : ''}`} style={{ color: connColor }}>
          <span className="dot" style={{ backgroundColor: connColor, boxShadow: `0 0 8px ${connColor}` }}></span>
          {connText}

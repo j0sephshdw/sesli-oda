@@ -1403,3 +1403,29 @@ body {
         height: 8px;
         border-radius: 50%;
     }
+/* ==========================================================================
+   19. ADMİN YETKİLERİ (ODADAN ATMA)
+   ========================================================================== */
+
+/* Odadan Atma (Kick) Butonu Tasarımı */
+.kick-btn {
+    background: rgba(218, 55, 60, 0.2);
+    color: #ff4d4d;
+    border: 1px solid rgba(218, 55, 60, 0.4);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: bold;
+    transition: all 0.2s ease;
+    margin-bottom: 5px;
+    backdrop-filter: blur(4px);
+}
+
+    .kick-btn:hover {
+        background: #da373c;
+        color: white;
+        border-color: #da373c;
+        box-shadow: 0 0 10px rgba(218, 55, 60, 0.5);
+        transform: scale(1.05);
+    }

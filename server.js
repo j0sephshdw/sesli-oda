@@ -16,16 +16,13 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// 1. KEEP-ALIVE (Render ücretsiz paket uyku gecikmesini aşmak için)
-// cron-job.org üzerinden "https://senin-siten.onrender.com/ping" adresine 10 dakikada bir istek atabilirsin.
+// Keep-Alive Ping
 app.get('/ping', (req, res) => {
   res.status(200).send('Sunucu Ayakta!');
 });
 
-// GÜVENLİK: Basit hafıza tabanlı oda şifresi yönetimi
 const roomPasswords = new Map();
 
-// Token Üretme API'si
 app.post('/api/token', async (req, res) => {
   try {
     const { roomName, participantName, password } = req.body;
@@ -34,17 +31,21 @@ app.post('/api/token', async (req, res) => {
       return res.status(400).json({ error: 'Oda adı ve kullanıcı adı zorunludur.' });
     }
 
-    // GÜVENLİK: Şifre Kontrolü ve Admin Yetkisi (Data Channels & Attributes için)
+    // GÜVENLİK FİXİ: Oda isimlerini küçük harfe çevirip boşlukları siliyoruz (Ghost Room engeli)
+    const safeRoomName = roomName.trim().toLowerCase();
+    const safePassword = password ? password.trim() : '';
+
     let isAdmin = false;
-    if (!roomPasswords.has(roomName)) {
-      // Odayı ilk kuran şifreyi belirler ve oda yöneticisi olur
-      roomPasswords.set(roomName, password || '');
+    
+    // Oda hafızada yoksa, ilk gelen kişi odayı kurar ve Admin (Taç) olur
+    if (!roomPasswords.has(safeRoomName)) {
+      roomPasswords.set(safeRoomName, safePassword);
       isAdmin = true;
     } else {
-      // Oda zaten kuruluysa girilen şifreyi kontrol et
-      const existingPassword = roomPasswords.get(roomName);
-      if (existingPassword && existingPassword !== password) {
-        return res.status(403).json({ error: 'Hatalı oda şifresi girdiniz!' });
+      // Oda varsa şifreyi ÇOK KATI bir şekilde kontrol ediyoruz
+      const existingPassword = roomPasswords.get(safeRoomName);
+      if (existingPassword !== '' && existingPassword !== safePassword) {
+        return res.status(403).json({ error: 'Bu oda şifreli! Yanlış şifre girdiniz veya şifresiz girmeye çalıştınız.' });
       }
     }
 
@@ -56,16 +57,17 @@ app.post('/api/token', async (req, res) => {
     }
 
     const at = new AccessToken(apiKey, apiSecret, {
-      identity: participantName,
+      identity: participantName.trim() + '_' + Date.now(), // Aynı isimli kişilerin çakışmasını engeller
+      name: participantName.trim(), // Gerçek ismi "name" özelliğinde taşıyoruz
       ttl: '12h',
     });
 
     at.addGrant({
       roomJoin: true,
-      room: roomName,
+      room: safeRoomName,
       canPublish: true,
       canSubscribe: true,
-      roomAdmin: isAdmin, // Oda sahibi yetkisi enjekte edildi
+      roomAdmin: isAdmin, 
     });
 
     const token = await at.toJwt();
