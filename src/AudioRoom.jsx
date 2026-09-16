@@ -88,6 +88,7 @@ export default function AudioRoom({ roomName, onLeave }) {
 
   const toggleKrisp = async () => {
     if (!isKrispNoiseFilterSupported()) return alert("Tarayıcınız Krisp AI desteklemiyor.");
+    
     const trackPub = localParticipant?.getTrackPublication(Track.Source.Microphone);
     const track = trackPub?.track;
 
@@ -99,11 +100,18 @@ export default function AudioRoom({ roomName, onLeave }) {
         await track.stopProcessor();
         setIsKrispActive(false);
       } else {
-        await track.setProcessor(krispProcessor);
+        // İşlemciyi buton basıldığında anlık oluştur ki tarayıcı engellemesin
+        let processor = krispProcessor;
+        if (!processor) {
+            processor = KrispNoiseFilter();
+            setKrispProcessor(processor);
+        }
+        await track.setProcessor(processor);
         setIsKrispActive(true);
       }
     } catch (err) {
-      alert("Gürültü engelleyici yüklenemedi: " + err.message);
+      alert("Gürültü engelleyici yüklenirken bir sorun oluştu: " + err.message);
+      setIsKrispActive(false);
     } finally {
       setKrispLoading(false);
     }
