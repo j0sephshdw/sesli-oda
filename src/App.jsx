@@ -59,7 +59,7 @@ export default function App() {
     setPassword('');
   };
 
-  if (token && (!LIVEKIT_URL || LIVEKIT_URL.includes('kendi-livekit-url'))) {
+  if (token && (!LIVEKIT_URL || LIVEKIT_URL.includes('wss://bizim-dc-x3m53dz5.livekit.cloud'))) {
     return (
       <div style={{color:'white', padding:'20px', textAlign:'center', marginTop:'50px'}}>
         <h2>🛑 Kritik Hata: LiveKit URL Bulunamadı</h2>
