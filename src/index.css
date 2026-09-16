@@ -102,9 +102,9 @@ body {
     flex-direction: column;
     padding: 20px;
     background: #1e1f22;
+    min-width: 0;
 }
 
-/* HEADER */
 .room-header {
     display: flex;
     justify-content: space-between;
@@ -150,46 +150,83 @@ body {
     }
 }
 
-/* DİNAMİK EKRAN: YAYIN VS KİŞİLER */
+.invite-btn {
+    background: #23a55a;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: 0.2s;
+}
+
+    .invite-btn:hover {
+        background: #1a7c43;
+    }
+
+/* ZEKİ DİNAMİK EKRAN */
 .dynamic-view-area {
     flex: 1;
     display: flex;
-    justify-content: center;
-    align-items: center;
+    flex-direction: column;
+    gap: 20px;
     background: #2b2d31;
     border-radius: 12px;
     padding: 20px;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
-.screen-share-grid {
-    width: 100%;
-    height: 100%;
+.screen-share-stage {
+    flex: 1;
+    min-height: 0;
     display: flex;
     justify-content: center;
     align-items: center;
-}
-
-.lk-participant-tile {
-    border-radius: 12px !important;
-    overflow: hidden;
     width: 100%;
-    height: 100%;
+    border-radius: 12px;
+    overflow: hidden;
 }
 
-/* KİŞİ PROFİL KARTLARI (SADECE EMOJİ VE İSİM) */
+    .screen-share-stage .lk-participant-tile {
+        height: 100% !important;
+        width: 100% !important;
+        border-radius: 12px;
+    }
+
 .voice-users-grid {
     display: flex;
     flex-wrap: wrap;
     gap: 20px;
     justify-content: center;
     width: 100%;
+    transition: all 0.3s ease;
 }
 
+/* EKRAN PAYLAŞIMI VARSA KİŞİLERİ ALTA YATAY DİZ */
+.dynamic-view-area.has-screen .voice-users-grid {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    justify-content: flex-start;
+    padding-bottom: 10px;
+}
+
+.dynamic-view-area.has-screen .voice-user-card {
+    flex-shrink: 0;
+    width: 120px;
+    height: 140px;
+}
+
+    .dynamic-view-area.has-screen .voice-user-card .avatar {
+        font-size: 40px;
+    }
+
+/* KİŞİ PROFİL KARTLARI */
 .voice-user-card {
     background: #1e1f22;
-    width: 140px;
-    height: 160px;
+    width: 160px;
+    height: 180px;
     border-radius: 16px;
     display: flex;
     flex-direction: column;
@@ -201,24 +238,34 @@ body {
 }
 
     .voice-user-card .avatar {
-        font-size: 50px;
+        font-size: 55px;
         margin-bottom: 10px;
         transition: 0.2s;
     }
 
     .voice-user-card .name {
         font-weight: bold;
-        font-size: 15px;
+        font-size: 16px;
         color: #f2f3f5;
     }
 
     .voice-user-card .speak-ring {
         position: absolute;
-        top: 10px;
-        right: 10px;
-        font-size: 14px;
+        bottom: 10px;
+        font-size: 12px;
+        font-weight: bold;
+        color: #23a55a;
         animation: bounce 0.4s infinite alternate;
+        background: #1e1f22;
+        padding: 2px 8px;
+        border-radius: 10px;
     }
+
+.quality-indicator {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+}
 
 @keyframes bounce {
     from {
@@ -230,7 +277,6 @@ body {
     }
 }
 
-/* KONUŞUNCA ÇIKAN YEŞİL EFEKT */
 .voice-user-card.speaking {
     border-color: #23a55a;
     box-shadow: 0 0 15px rgba(35, 165, 90, 0.4);
@@ -243,13 +289,32 @@ body {
 /* KONTROL BUTONLARI */
 .room-controls-wrapper {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
     align-items: center;
     gap: 15px;
     margin-top: 20px;
     padding: 15px;
     background: transparent;
 }
+
+.interactive-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.action-btn {
+    background: #2b2d31;
+    border: 1px solid #3f4147;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: 0.2s;
+}
+
+    .action-btn:hover {
+        background: #3f4147;
+    }
 
 .main-controls {
     display: flex;
@@ -287,6 +352,11 @@ body {
         box-shadow: 0 0 10px rgba(88, 101, 242, 0.5);
     }
 
+    .ctrl-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
 .leave-btn {
     background: transparent;
     color: #da373c;
@@ -305,7 +375,7 @@ body {
 
 /* SOHBET PANELİ */
 .custom-chat-panel {
-    width: 320px;
+    width: 340px;
     background: #2b2d31;
     border-left: 1px solid #1e1f22;
     display: flex;
@@ -325,7 +395,7 @@ body {
     padding: 15px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
 }
 
 .chat-sys-msg {
@@ -333,21 +403,32 @@ body {
     font-size: 12px;
     font-style: italic;
     text-align: center;
-    margin-bottom: 10px;
+    margin-bottom: 5px;
 }
 
 .chat-msg {
     background: #1e1f22;
-    padding: 10px;
+    padding: 12px;
     border-radius: 8px;
     font-size: 14px;
     line-height: 1.4;
 }
 
+.chat-msg-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 4px;
+}
+
 .chat-sender {
     color: #5865f2;
     font-weight: bold;
-    margin-right: 5px;
+}
+
+.chat-time {
+    color: #949ba4;
+    font-size: 11px;
 }
 
 .chat-text {
