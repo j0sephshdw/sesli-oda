@@ -1,68 +1,98 @@
 import React, { useState } from 'react';
-import { LiveKitRoom, VideoConference } from '@livekit/components-react';
-import '@livekit/components-styles';
+import { LiveKitRoom } from '@livekit/components-react';
+import AudioRoom from './components/AudioRoom';
+
+const serverUrl = import.meta.env.VITE_LIVEKIT_URL || 'wss://your-livekit-instance.livekit.cloud';
 
 export default function App() {
+  const [roomName, setRoomName] = useState('');
+  const [participantName, setParticipantName] = useState('');
   const [token, setToken] = useState('');
-  const [room, setRoom] = useState('general');
-  const [username, setUsername] = useState('');
-  const [joined, setJoined] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleJoin = async (e) => {
     e.preventDefault();
-    if (!username.trim()) return alert('Lütfen bir kullanıcı adı girin!');
+    if (!roomName.trim() || !participantName.trim()) {
+      setError('Lütfen oda adını ve kullanıcı adınızı girin.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
 
     try {
-      const res = await fetch(`https://sesli-oda.onrender.com/get-token?room=${encodeURIComponent(room)}&username=${encodeURIComponent(username)}`);
-      if (!res.ok) throw new Error('Token alınamadı');
-      
-      const data = await res.json();
+      const response = await fetch('/api/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomName, participantName }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Token alınamadı.');
+      }
+
       setToken(data.token);
-      setJoined(true);
     } catch (err) {
-      console.error(err);
-      alert('Odaya bağlanırken bir hata oluştu.');
+      setError(err.message || 'Bağlantı hatası.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (!joined) {
+  const handleDisconnect = () => {
+    setToken('');
+  };
+
+  if (token) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '15px', fontFamily: 'sans-serif' }}>
-        <h1>Sesli & Görüntülü Oda</h1>
-        <form onSubmit={handleJoin} style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '300px' }}>
-          <input
-            type="text"
-            placeholder="Kullanıcı Adı"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            style={{ padding: '10px', fontSize: '16px', borderRadius: '4px', border: '1px solid #ccc' }}
-          />
-          <input
-            type="text"
-            placeholder="Oda Adı"
-            value={room}
-            onChange={(e) => setRoom(e.target.value)}
-            style={{ padding: '10px', fontSize: '16px', borderRadius: '4px', border: '1px solid #ccc' }}
-          />
-          <button type="submit" style={{ padding: '10px', fontSize: '16px', cursor: 'pointer', backgroundColor: '#0070f3', color: 'white', border: 'none', borderRadius: '4px' }}>
-            Odaya Katıl
-          </button>
-        </form>
-      </div>
+      <LiveKitRoom
+        video={false}
+        audio={true}
+        token={token}
+        serverUrl={serverUrl}
+        onDisconnected={handleDisconnect}
+        data-lk-theme="default"
+        style={{ height: '100vh' }}
+      >
+        <AudioRoom roomName={roomName} onLeave={handleDisconnect} />
+      </LiveKitRoom>
     );
   }
 
   return (
-    <LiveKitRoom
-      video={true}
-      audio={true}
-      token={token}
-      serverUrl={import.meta.env.VITE_LIVEKIT_URL || 'wss://bizim-dc-x3m53dz5.livekit.cloud'}
-      data-lk-theme="default"
-      style={{ height: '100vh' }}
-      onDisconnected={() => setJoined(false)}
-    >
-      <VideoConference />
-    </LiveKitRoom>
+    <div className="join-container">
+      <div className="join-card">
+        <h2>Sesli Odaya Katıl</h2>
+        {error && <div className="error-msg">{error}</div>}
+        <form onSubmit={handleJoin}>
+          <div className="form-group">
+            <label>Kullanıcı Adı</label>
+            <input
+              type="text"
+              placeholder="Adınızı girin"
+              value={participantName}
+              onChange={(e) => setParticipantName(e.target.value)}
+              required
+            />
+          </div>
+          <div className="form-group">
+            <label>Oda Adı</label>
+            <input
+              type="text"
+              placeholder="Oda adını girin"
+              value={roomName}
+              onChange={(e) => setRoomName(e.target.value)}
+              required
+            />
+          </div>
+          <button type="submit" disabled={loading} className="join-btn">
+            {loading ? 'Bağlanılıyor...' : 'Odaya Katıl'}
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }
