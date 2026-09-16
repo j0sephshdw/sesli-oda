@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Özel Sesli İletişim Merkezi</title>
+    <!-- LiveKit Client -->
     <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+    <!-- Krisp Yapay Zeka Gürültü Engelleme Eklentisi -->
+    <script src="https://cdn.jsdelivr.net/npm/@livekit/krisp-noise-filter/dist/krisp-noise-filter.umd.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -113,7 +116,7 @@
 
                     <div class="checkbox-container">
                         <input type="checkbox" id="noise-suppression-toggle" checked onchange="toggleNoiseSuppression(this.checked)">
-                        <label for="noise-suppression-toggle" style="font-size: 13px; color: #949ba4; cursor: pointer;">Arka Plan Gürültü Engelleme</label>
+                        <label for="noise-suppression-toggle" style="font-size: 13px; color: #949ba4; cursor: pointer;">Yapay Zeka Arka Plan Gürültü Engelleme</label>
                     </div>
                 </div>
             </div>
@@ -137,6 +140,7 @@
         let currentRoomName = "Lobi"; 
         const userVolumes = {}; 
         const audioElements = {}; 
+        let krispProcessor; // Krisp Yapay Zeka filtresi için değişken
 
         window.addEventListener('DOMContentLoaded', () => {
             const urlParams = new URLSearchParams(window.location.search);
@@ -179,7 +183,8 @@
                     audioCaptureDefaults: {
                         autoGainControl: true,
                         echoCancellation: true,
-                        noiseSuppression: isNoiseSuppressionOn
+                        // Normal gürültü engellemeyi kapatıyoruz, yerine Krisp AI'ı entegre edeceğiz
+                        noiseSuppression: false 
                     }
                 });
 
@@ -240,6 +245,11 @@
                 document.getElementById('main-title').innerText = `🔊 Oda: ${currentRoomName}`;
                 renderUsers();
 
+                // Odada mikrofona bağlandıktan sonra, eğer ayar seçiliyse AI Gürültü Engellemeyi otomatik çalıştır
+                if (isNoiseSuppressionOn) {
+                    await toggleNoiseSuppression(true);
+                }
+
             } catch (error) {
                 document.getElementById('status').innerText = "Hata: " + error.message;
             }
@@ -296,7 +306,7 @@
             }
         }
 
-        // AYARLAR VE GÜRÜLTÜ ENGELLEME İŞLEMLERİ
+        // AYARLAR VE YAPAY ZEKA GÜRÜLTÜ ENGELLEME İŞLEMLERİ
         async function toggleSettings() {
             const panel = document.getElementById('settings-panel');
             panel.style.display = panel.style.display === "none" ? "block" : "none";
@@ -326,14 +336,29 @@
         }
 
         async function toggleNoiseSuppression(isEnabled) {
-            if (room && room.localParticipant && !isMuted) {
-                // Mikrofonu anlık kapatıp yeni gürültü engelleme ayarıyla tekrar açıyoruz
-                await room.localParticipant.setMicrophoneEnabled(false);
-                await room.localParticipant.setMicrophoneEnabled(true, {
-                    noiseSuppression: isEnabled,
-                    echoCancellation: true,
-                    autoGainControl: true
-                });
+            if (!room || !room.localParticipant) return;
+            
+            try {
+                const micPublication = room.localParticipant.getTrackPublication(LivekitClient.Track.Source.Microphone);
+                if (!micPublication || !micPublication.track) return;
+                
+                const micTrack = micPublication.track;
+
+                if (isEnabled) {
+                    if (!krispProcessor) {
+                        // Krisp AI modelini başlat
+                        krispProcessor = LivekitKrispNoiseFilter.KrispNoiseFilter();
+                    }
+                    await micTrack.setProcessor(krispProcessor);
+                    console.log("Krisp AI Gürültü Engelleme Aktif Edildi.");
+                } else {
+                    if (krispProcessor) {
+                        await micTrack.stopProcessor();
+                        console.log("Krisp AI Gürültü Engelleme Kapatıldı.");
+                    }
+                }
+            } catch (err) {
+                console.error("Gürültü engelleme sırasında hata oluştu:", err);
             }
         }
 
