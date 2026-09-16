@@ -5,25 +5,25 @@
 }
 
 body {
-    font-family: system-ui, -apple-system, sans-serif;
-    background-color: #0f172a;
-    color: #f8fafc;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: #1e1f22; /* Discord arkaplan rengi */
+    color: #f2f3f5;
     min-height: 100vh;
 }
 
+/* GİRİŞ EKRANI */
 .join-container {
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
-    padding: 1rem;
+    height: 100vh;
 }
 
 .join-card {
-    background: #1e293b;
+    background: #313338;
     padding: 2.5rem;
     border-radius: 12px;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     width: 100%;
     max-width: 400px;
 }
@@ -31,104 +31,137 @@ body {
     .join-card h2 {
         margin-bottom: 1.5rem;
         text-align: center;
-        color: #38bdf8;
+        color: #fff;
     }
 
 .form-group {
-    margin-bottom: 1.25rem;
+    margin-bottom: 1rem;
 }
 
     .form-group label {
         display: block;
         margin-bottom: 0.5rem;
-        font-size: 0.875rem;
-        color: #94a3b8;
+        font-size: 0.85rem;
+        color: #b5bac1;
     }
 
     .form-group input {
         width: 100%;
         padding: 0.75rem;
-        border: 1px solid #334155;
+        border: 1px solid #1e1f22;
         border-radius: 6px;
-        background: #0f172a;
+        background: #1e1f22;
         color: #fff;
         font-size: 1rem;
+        outline: none;
     }
 
         .form-group input:focus {
-            outline: none;
-            border-color: #38bdf8;
+            border-color: #5865f2;
         }
 
 .join-btn {
     width: 100%;
-    padding: 0.875rem;
-    background: #0284c7;
+    padding: 0.75rem;
+    background: #5865f2;
     color: white;
     border: none;
     border-radius: 6px;
     font-size: 1rem;
-    font-weight: 600;
+    font-weight: bold;
     cursor: pointer;
+    margin-top: 10px;
 }
 
     .join-btn:hover {
-        background: #0369a1;
+        background: #4752c4;
     }
 
 .error-msg {
-    background: #7f1d1d;
-    color: #fca5a5;
+    background: #da373c;
+    color: white;
     padding: 0.75rem;
     border-radius: 6px;
     margin-bottom: 1rem;
     font-size: 0.875rem;
+    text-align: center;
 }
 
-.room-container {
+/* ODA İÇİ TASARIM (YAN YANA) */
+.custom-room-layout {
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.main-panel {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    padding: 20px;
+    background: #1e1f22;
 }
 
 .room-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1.5rem 2rem;
-    background: #1e293b;
-    border-bottom: 1px solid #334155;
+    margin-bottom: 20px;
 }
+
+.invite-btn {
+    background: #00a8fc;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+    .invite-btn:hover {
+        background: #0090d8;
+    }
 
 .participants-grid {
     flex: 1;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 1.5rem;
-    padding: 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
     overflow-y: auto;
+    align-content: start;
 }
 
-.room-footer {
+.room-controls {
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 1rem;
-    padding: 1.5rem;
-    background: #1e293b;
-    border-top: 1px solid #334155;
+    gap: 15px;
+    margin-top: 20px;
+    padding: 15px;
+    background: #2b2d31;
+    border-radius: 12px;
 }
 
 .leave-btn {
-    padding: 0.6rem 1.2rem;
-    background: #dc2626;
+    background: #da373c;
     color: white;
     border: none;
-    border-radius: 6px;
-    font-weight: 600;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: bold;
     cursor: pointer;
 }
 
     .leave-btn:hover {
-        background: #b91c1c;
+        background: #a1282c;
     }
+
+/* SOHBET PANELİ */
+.chat-panel {
+    width: 350px;
+    background: #2b2d31;
+    border-left: 1px solid #1e1f22;
+    display: flex;
+    flex-direction: column;
+}
