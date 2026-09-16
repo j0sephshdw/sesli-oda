@@ -2,7 +2,7 @@ import React from 'react';
 import {
   RoomAudioRenderer,
   ControlBar,
-  ParticipantLoop,
+  TrackLoop, // HATA BURADAYDI: ParticipantLoop yerine TrackLoop kullanmalıyız
   ParticipantTile,
   Chat,
   useTracks,
@@ -13,9 +13,13 @@ import { Track } from 'livekit-client';
 export default function AudioRoom({ roomName, onLeave }) {
   const room = useRoomContext();
   
-  // Sadece mikrofon ve ekran paylaşımı parçalarını alıyoruz
+  // Sadece mikrofon ve ekran paylaşımı parçalarını alıyoruz.
+  // withPlaceholder: true sayesinde kamerası kapalı olanların profil kutusu görünür!
   const tracks = useTracks(
-    [Track.Source.Microphone, Track.Source.ScreenShare],
+    [
+      { source: Track.Source.Microphone, withPlaceholder: true },
+      { source: Track.Source.ScreenShare, withPlaceholder: false }
+    ],
     { onlySubscribed: false }
   );
 
@@ -36,9 +40,9 @@ export default function AudioRoom({ roomName, onLeave }) {
 
         {/* Katılımcıların ve Ekran Paylaşımlarının Listelendiği Alan */}
         <div className="participants-grid">
-          <ParticipantLoop tracks={tracks}>
+          <TrackLoop tracks={tracks}>
             <ParticipantTile />
-          </ParticipantLoop>
+          </TrackLoop>
         </div>
 
         {/* Mikrofon, Yayın Açma ve Ayrılma Butonları */}

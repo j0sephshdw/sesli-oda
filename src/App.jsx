@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LiveKitRoom } from '@livekit/components-react';
 import AudioRoom from './AudioRoom';
-import '@livekit/components-styles'; // LiveKit'in hazır şık tasarımı
+import '@livekit/components-styles';
 
 export default function App() {
   const [roomName, setRoomName] = useState('');
@@ -32,7 +32,6 @@ export default function App() {
     setError('');
 
     try {
-      // Backend'deki güncel bilet alma adresimiz
       const response = await fetch('/api/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -53,26 +52,25 @@ export default function App() {
 
   const handleDisconnect = () => {
     setToken('');
-    window.history.replaceState({}, document.title, window.location.pathname); // URL'yi temizle
+    window.history.replaceState({}, document.title, window.location.pathname);
     setIsInvite(false);
     setRoomName('');
   };
 
-  // Bilet varsa Odayı Yükle
   if (token) {
     return (
       <LiveKitRoom
         video={false}
         audio={true}
         token={token}
-        serverUrl={import.meta.env.VITE_LIVEKIT_URL || 'wss://your-livekit-url-here'} // .env'den gelir
+        serverUrl={import.meta.env.VITE_LIVEKIT_URL}
         onDisconnected={handleDisconnect}
-        data-lk-theme="default" // Discord benzeri hazır tema
+        data-lk-theme="default"
         options={{
           audioCaptureDefaults: {
             autoGainControl: true,
             echoCancellation: true,
-            noiseSuppression: true // Klavye sesi engelleme
+            noiseSuppression: true
           }
         }}
       >
@@ -81,7 +79,6 @@ export default function App() {
     );
   }
 
-  // Bilet yoksa Giriş Ekranını Yükle
   return (
     <div className="join-container">
       <div className="join-card">
