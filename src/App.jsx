@@ -47,7 +47,7 @@ export default function App() {
         video={false}
         audio={{
           echoCancellation: true,
-          noiseSuppression: true,
+          noiseSuppression: false,// Krisp AI için tarayıcı filtresini kapatın
           autoGainControl: false // KLAVYE SESİNİN ZORLA YÜKSELTİLMESİNİ ENGELLER
         }}
         token={token}

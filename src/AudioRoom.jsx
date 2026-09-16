@@ -16,65 +16,84 @@ import { KrispNoiseFilter, isKrispNoiseFilterSupported } from '@livekit/krisp-no
 export default function AudioRoom({ roomName, onLeave }) {
   const room = useRoomContext();
   const participants = useParticipants(); 
-  const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant();
-  const screenTracks = useTracks([Track.Source.ScreenShare]);
+  const { localParticipant, isMicrophoneEnabled } = useLocalParticipant();
   
-  const { send, chatMessages } = useChat();
-  const [msg, setMsg] = useState('');
-  const chatEndRef = useRef(null);
-
-  const [krispProcessor, setKrispProcessor] = useState(null);
   const [isKrispActive, setIsKrispActive] = useState(false);
-  const [krispStatus, setKrispStatus] = useState('⏳ Filtre Yükleniyor...');
-  const [inviteText, setInviteText] = useState('🔗 Davet Linki Kopyala');
+  const [krispStatus, setKrispStatus] = useState('🎧 Gürültü Engelleyici (KAPALI)');
+  const processorRef = useRef(null);
 
-  // Otomatik Sohbet Kaydırma
+  // Mikrofon ve Krisp Durum Yönetimi
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages]);
+    let currentProcessor = null;
 
-  // 1. AŞAMA: Krisp AI Modelini Arka Planda Hazırla
-  useEffect(() => {
-    if (isKrispNoiseFilterSupported()) {
-      const processor = KrispNoiseFilter();
-      setKrispProcessor(processor);
-      setKrispStatus('🎧 Gürültü Engelleyici (HAZIR)');
-    } else {
-      setKrispStatus('🚫 Tarayıcı Desteklemiyor');
-    }
-  }, []);
-
-  // 2. AŞAMA: Mikrofon Açıldığında Yarım Saniye Bekle ve Filtreyi ZORLA Oturt
-  useEffect(() => {
-    let timeoutId;
-    const autoEnableKrisp = async () => {
+    const setupKrisp = async () => {
       if (!isMicrophoneEnabled) {
-         setIsKrispActive(false);
-         setKrispStatus('🎧 Mikrofon Kapalı');
-         return;
+        setIsKrispActive(false);
+        setKrispStatus('🎧 Mikrofon Kapalı');
+        return;
       }
 
-      // Track'in (ses kanalının) tam oluşması için 500ms zeki bekleme
-      timeoutId = setTimeout(async () => {
-         const track = localParticipant?.getTrackPublication(Track.Source.Microphone)?.track;
-         if (track && krispProcessor && !isKrispActive) {
-           try {
-             setKrispStatus('🎧 Başlatılıyor...');
-             await track.setProcessor(krispProcessor);
-             setIsKrispActive(true);
-             setKrispStatus('🎧 Gürültü Engelleyici (AÇIK)');
-           } catch(e) {
-             console.error("Krisp hatası:", e);
-             setKrispStatus('🎧 Gürültü Engelleyici (HATA)');
-           }
-         }
-      }, 500); 
+      if (!isKrispNoiseFilterSupported()) {
+        setKrispStatus('🚫 Tarayıcı Desteklemiyor');
+        return;
+      }
+
+      const track = localParticipant?.getTrackPublication(Track.Source.Microphone)?.track;
+      if (!track) return;
+
+      try {
+        setKrispStatus('🎧 Filtre Başlatılıyor...');
+        // Her mikrofon açılışında yeni processor örneği oluşturun
+        currentProcessor = KrispNoiseFilter();
+        processorRef.current = currentProcessor;
+
+        await track.setProcessor(currentProcessor);
+        setIsKrispActive(true);
+        setKrispStatus('🎧 Gürültü Engelleyici (AÇIK)');
+      } catch (err) {
+        console.error('Krisp Aktifleştirme Hatası:', err);
+        setKrispStatus('🎧 Gürültü Engelleyici (HATA)');
+        setIsKrispActive(false);
+      }
     };
 
-    autoEnableKrisp();
-    return () => clearTimeout(timeoutId);
-  }, [isMicrophoneEnabled, localParticipant, krispProcessor]);
+    setupKrisp();
 
+    // Temizleme fonksiyonu: Mikrofon kapandığında veya bileşen kaldırıldığında işlemciyi durdur
+    return () => {
+      const track = localParticipant?.getTrackPublication(Track.Source.Microphone)?.track;
+      if (track && processorRef.current) {
+        track.stopProcessor().catch(() => {});
+        processorRef.current = null;
+      }
+    };
+  }, [isMicrophoneEnabled, localParticipant]);
+
+  // Manuel Açma / Kapama Butonu
+  const toggleKrisp = async () => {
+    const track = localParticipant?.getTrackPublication(Track.Source.Microphone)?.track;
+    if (!track || !isMicrophoneEnabled) return;
+
+    try {
+      if (isKrispActive && processorRef.current) {
+        await track.stopProcessor();
+        processorRef.current = null;
+        setIsKrispActive(false);
+        setKrispStatus('🎧 Gürültü Engelleyici (KAPALI)');
+      } else {
+        const newProcessor = KrispNoiseFilter();
+        processorRef.current = newProcessor;
+        await track.setProcessor(newProcessor);
+        setIsKrispActive(true);
+        setKrispStatus('🎧 Gürültü Engelleyici (AÇIK)');
+      }
+    } catch (err) {
+      console.error('Krisp Manuel Geçiş Hatası:', err);
+    }
+  };
+
+  // ... (Geri kalan render kodları aynı kalabilir)
+}
   // Giriş / Çıkış Ses Efektleri (SFX)
   useEffect(() => {
     const playTone = (type) => {
