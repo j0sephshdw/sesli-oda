@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LiveKitRoom } from '@livekit/components-react';
 import AudioRoom from './AudioRoom';
 import '@livekit/components-styles';
@@ -6,8 +6,9 @@ import '@livekit/components-styles';
 const LIVEKIT_URL = 'wss://bizim-dc-x3m53dz5.livekit.cloud';
 
 export default function App() {
-  const [roomName, setRoomName] = useState('');
-  const [participantName, setParticipantName] = useState('');
+  // LocalStorage'dan son bilgileri al
+  const [roomName, setRoomName] = useState(localStorage.getItem('lastRoom') || '');
+  const [participantName, setParticipantName] = useState(localStorage.getItem('lastName') || '');
   const [password, setPassword] = useState('');
   const [token, setToken] = useState('');
   const [loading, setLoading] = useState(false);
@@ -33,6 +34,10 @@ export default function App() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Bağlantı reddedildi.');
       
+      // Başarılı girişte bilgileri kaydet
+      localStorage.setItem('lastRoom', roomName);
+      localStorage.setItem('lastName', participantName);
+      
       setToken(data.token);
     } catch (err) {
       setError(err.message || 'Sunucuya ulaşılamadı.');
@@ -47,8 +52,8 @@ export default function App() {
         video={false}
         audio={{
           echoCancellation: true,
-          noiseSuppression: false,// Krisp AI için tarayıcı filtresini kapatın
-          autoGainControl: false // KLAVYE SESİNİN ZORLA YÜKSELTİLMESİNİ ENGELLER
+          noiseSuppression: false, // Krisp AI için tarayıcı filtresini kapatın
+          autoGainControl: false // Orijinal sesin bozulmasını engeller
         }}
         token={token}
         serverUrl={LIVEKIT_URL}

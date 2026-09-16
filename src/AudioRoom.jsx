@@ -24,52 +24,44 @@ export default function AudioRoom({ roomName, onLeave }) {
   const chatEndRef = useRef(null);
 
   const [isKrispActive, setIsKrispActive] = useState(false);
-  const [krispStatus, setKrispStatus] = useState('🎧 Gürültü Engelleyici (KAPALI)');
-  const [inviteText, setInviteText] = useState('🔗 Davet Linki Kopyala');
-  const [isDeafened, setIsDeafened] = useState(false); // Kulaklık Sustur
-  const [floatingEmojis, setFloatingEmojis] = useState([]); // Ekranda yüzen emojiler
+  const [krispStatus, setKrispStatus] = useState('🎧 Krisp (KAPALI)');
+  const [inviteText, setInviteText] = useState('🔗 Davet Linki');
+  
+  const [isDeafened, setIsDeafened] = useState(false);
+  const [isHandRaised, setIsHandRaised] = useState(false);
+  const [floatingEmojis, setFloatingEmojis] = useState([]);
 
   const processorRef = useRef(null);
 
-  // Otomatik Sohbet Kaydırma
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  // Krisp Kurulumu
   useEffect(() => {
     const setupKrisp = async () => {
       if (!isMicrophoneEnabled) {
         setIsKrispActive(false);
-        setKrispStatus('🎧 Mikrofon Kapalı');
+        setKrispStatus('🎧 Mik Kapalı');
         return;
       }
-
-      if (!isKrispNoiseFilterSupported()) {
-        setKrispStatus('🚫 Tarayıcı Desteklemiyor');
-        return;
-      }
+      if (!isKrispNoiseFilterSupported()) return setKrispStatus('🚫 Desteklenmiyor');
 
       const track = localParticipant?.getTrackPublication(Track.Source.Microphone)?.track;
       if (!track) return;
 
       try {
-        setKrispStatus('🎧 Filtre Başlatılıyor...');
+        setKrispStatus('🎧 Başlatılıyor...');
         const currentProcessor = KrispNoiseFilter();
         processorRef.current = currentProcessor;
-
         await track.setProcessor(currentProcessor);
         setIsKrispActive(true);
-        setKrispStatus('🎧 Gürültü Engelleyici (AÇIK)');
+        setKrispStatus('🎧 Krisp (AÇIK)');
       } catch (err) {
-        console.error('Krisp Aktifleştirme Hatası:', err);
-        setKrispStatus('🎧 Gürültü Engelleyici (HATA)');
+        setKrispStatus('🎧 Hata');
         setIsKrispActive(false);
       }
     };
-
     setupKrisp();
-
     return () => {
       const track = localParticipant?.getTrackPublication(Track.Source.Microphone)?.track;
       if (track && processorRef.current) {
@@ -79,7 +71,6 @@ export default function AudioRoom({ roomName, onLeave }) {
     };
   }, [isMicrophoneEnabled, localParticipant]);
 
-  // Ses Efektleri & Veri Paket Dinleyicisi (Yüzen Emojiler İçin)
   useEffect(() => {
     const playTone = (type) => {
       try {
@@ -88,27 +79,26 @@ export default function AudioRoom({ roomName, onLeave }) {
         const gain = ctx.createGain();
         osc.connect(gain); gain.connect(ctx.destination);
         osc.type = 'sine';
+        
+        // Ses tasarımını daha modern ve yumuşak hale getirdik
         if (type === 'join') {
-          osc.frequency.setValueAtTime(440, ctx.currentTime);
-          osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1);
+          osc.frequency.setValueAtTime(300, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.15);
         } else {
-          osc.frequency.setValueAtTime(880, ctx.currentTime);
-          osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.1);
+          osc.frequency.setValueAtTime(600, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(300, ctx.currentTime + 0.15);
         }
-        gain.gain.setValueAtTime(0.05, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
-        osc.start(); osc.stop(ctx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.02, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+        osc.start(); osc.stop(ctx.currentTime + 0.2);
       } catch(e) {}
     };
 
-    // LiveKit Data Packet Alımı (Anlık Canlı Tepkiler)
-    const handleDataReceived = (payload, participant) => {
+    const handleDataReceived = (payload) => {
       try {
         const str = new TextDecoder().decode(payload);
         const data = JSON.parse(str);
-        if (data.type === 'EMOJI_REACTION') {
-          spawnFloatingEmoji(data.emoji);
-        }
+        if (data.type === 'EMOJI_REACTION') spawnFloatingEmoji(data.emoji);
       } catch(e) {}
     };
 
@@ -123,75 +113,75 @@ export default function AudioRoom({ roomName, onLeave }) {
     };
   }, [room]);
 
-  // Yüzen Emoji Oluşturucu
   const spawnFloatingEmoji = (emoji) => {
     const id = Date.now() + Math.random();
-    const leftPos = Math.floor(Math.random() * 60) + 20; // %20 ile %80 arasında rastgele x pozisyonu
+    const leftPos = Math.floor(Math.random() * 60) + 20;
     setFloatingEmojis((prev) => [...prev, { id, emoji, left: leftPos }]);
-
     setTimeout(() => {
       setFloatingEmojis((prev) => prev.filter((item) => item.id !== id));
     }, 2000);
   };
 
-  // Emoji Gönderme Fonksiyonu (Data Packet ile)
   const sendEmojiReaction = (emoji) => {
     spawnFloatingEmoji(emoji);
     const data = JSON.stringify({ type: 'EMOJI_REACTION', emoji });
-    const encoder = new TextEncoder();
-    room.localParticipant.publishData(encoder.encode(data), { reliable: true });
+    room.localParticipant.publishData(new TextEncoder().encode(data), { reliable: true });
   };
 
-  const handleSendMessage = () => {
-    if (msg.trim()) { send(msg); setMsg(''); }
+  const toggleDeafen = () => {
+    const nextState = !isDeafened;
+    setIsDeafened(nextState);
+    // Diğer kullanıcıların kulaklık kapattığımızı görmesi için attribute güncelliyoruz
+    localParticipant.setAttributes({ deafened: nextState ? 'true' : 'false' });
+  };
+
+  const toggleHandRaise = () => {
+    const nextState = !isHandRaised;
+    setIsHandRaised(nextState);
+    localParticipant.setAttributes({ handRaised: nextState ? 'true' : 'false' });
+    if (nextState) sendEmojiReaction('✋'); // El kaldırınca emoji de fırlat
   };
 
   const copyInvite = () => {
     const url = `${window.location.origin}?room=${encodeURIComponent(roomName)}`;
     navigator.clipboard.writeText(url);
     setInviteText('✅ Kopyalandı!');
-    setTimeout(() => setInviteText('🔗 Davet Linki Kopyala'), 2000);
+    setTimeout(() => setInviteText('🔗 Davet Linki'), 2000);
   };
 
   const toggleKrisp = async () => {
     const track = localParticipant?.getTrackPublication(Track.Source.Microphone)?.track;
     if (!track || !isMicrophoneEnabled) return;
-
     try {
       if (isKrispActive && processorRef.current) {
         await track.stopProcessor();
         processorRef.current = null;
         setIsKrispActive(false);
-        setKrispStatus('🎧 Gürültü Engelleyici (KAPALI)');
+        setKrispStatus('🎧 Krisp (KAPALI)');
       } else {
         const newProcessor = KrispNoiseFilter();
         processorRef.current = newProcessor;
         await track.setProcessor(newProcessor);
         setIsKrispActive(true);
-        setKrispStatus('🎧 Gürültü Engelleyici (AÇIK)');
+        setKrispStatus('🎧 Krisp (AÇIK)');
       }
-    } catch (err) {
-      console.error('Krisp Manuel Geçiş Hatası:', err);
-    }
+    } catch (err) {}
   };
 
   const formatTime = (timestamp) => new Date(timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 
   return (
     <div className="custom-room-layout">
-      {/* YÜZEN EMOJİ EKRANI (OVERLAY) */}
       <div className="floating-emoji-container">
         {floatingEmojis.map((item) => (
-          <span key={item.id} className="floating-emoji" style={{ left: `${item.left}%` }}>
-            {item.emoji}
-          </span>
+          <span key={item.id} className="floating-emoji" style={{ left: `${item.left}%` }}>{item.emoji}</span>
         ))}
       </div>
 
       <div className="main-panel">
         <header className="room-header">
           <div className="header-info">
-            <h3>🔊 Oda: {roomName}</h3>
+            <h3>🔊 {roomName}</h3>
             <span className="live-badge">🔴 Canlı</span>
             <span className="people-count">👥 {participants.length} Kişi</span>
           </div>
@@ -201,86 +191,81 @@ export default function AudioRoom({ roomName, onLeave }) {
         <div className={`dynamic-view-area ${screenTracks.length > 0 ? 'has-screen' : ''}`}>
           {screenTracks.length > 0 && (
             <div className="screen-share-stage">
-              <TrackLoop tracks={screenTracks}>
-                <ParticipantTile />
-              </TrackLoop>
+              <TrackLoop tracks={screenTracks}><ParticipantTile /></TrackLoop>
             </div>
           )}
           
           <div className="voice-users-grid">
-            {participants.map((p) => (
-              <div key={p.identity} className={`voice-user-card ${p.isSpeaking ? 'speaking' : ''}`}>
-                <div className="quality-indicator"><ConnectionQualityIndicator participant={p} /></div>
-                <div className="avatar">👤</div>
-                <div className="name">{p.identity.split('_')[0]}</div>
-                
-                {!p.isMicrophoneEnabled ? (
+            {participants.map((p) => {
+              // Canlı LiveKit attributelarını oku
+              const isUserDeafened = p.attributes?.deafened === 'true';
+              const isUserHandRaised = p.attributes?.handRaised === 'true';
+
+              return (
+                <div key={p.identity} className={`voice-user-card ${p.isSpeaking ? 'speaking' : ''}`}>
+                  <div className="quality-indicator"><ConnectionQualityIndicator participant={p} /></div>
+                  
+                  {isUserHandRaised && <div className="hand-raised-badge">✋</div>}
+
+                  <div className="avatar">👤</div>
+                  <div className="name">{p.identity.split('_')[0]}</div>
+                  
+                  {isUserDeafened ? (
+                    <div className="muted-badge deafened">🎧 Sağır</div>
+                  ) : !p.isMicrophoneEnabled ? (
                     <div className="muted-badge">🔇 Sustu</div>
-                ) : p.isSpeaking ? (
-                   <div className="waveform">
-                     <span className="bar"></span><span className="bar"></span><span className="bar"></span>
-                   </div>
-                ) : null}
-                
-                {p.identity !== localParticipant.identity && (
-                  <input 
-                    type="range" min="0" max="1" step="0.01" defaultValue="1" 
-                    className="vol-slider" title="Bu kişinin sesini ayarla"
-                    onChange={(e) => {
-                      const audioTrack = p.getTrackPublication(Track.Source.Microphone)?.track;
-                      if (audioTrack && audioTrack.setVolume) audioTrack.setVolume(parseFloat(e.target.value));
-                    }}
-                  />
-                )}
-              </div>
-            ))}
+                  ) : p.isSpeaking ? (
+                     <div className="waveform">
+                       <span className="bar"></span><span className="bar"></span><span className="bar"></span>
+                     </div>
+                  ) : null}
+                  
+                  {p.identity !== localParticipant.identity && (
+                    <input 
+                      type="range" min="0" max="1" step="0.01" defaultValue="1" 
+                      className="vol-slider" title="Sesi ayarla"
+                      onChange={(e) => {
+                        const audioTrack = p.getTrackPublication(Track.Source.Microphone)?.track;
+                        if (audioTrack && audioTrack.setVolume) audioTrack.setVolume(parseFloat(e.target.value));
+                      }}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 
+        {/* GLASSMORPHISM KONTROL BAR */}
         <footer className="room-controls-wrapper">
           <div className="interactive-actions">
-            <button onClick={() => sendEmojiReaction('✋')} className="action-btn">✋</button>
             <button onClick={() => sendEmojiReaction('🔥')} className="action-btn">🔥</button>
             <button onClick={() => sendEmojiReaction('👍')} className="action-btn">👍</button>
             <button onClick={() => sendEmojiReaction('😂')} className="action-btn">😂</button>
             <button onClick={() => sendEmojiReaction('🎉')} className="action-btn">🎉</button>
+            <button onClick={toggleHandRaise} className={`action-btn ${isHandRaised ? 'active-hand' : ''}`}>✋</button>
           </div>
           
           <div className="main-controls">
-            <button 
-              className={`ctrl-btn ${!isMicrophoneEnabled ? 'muted' : 'active'}`} 
-              onClick={() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
-            >
-              {isMicrophoneEnabled ? '🎙️ Mikrofon Açık' : '🔇 Mikrofon Kapalı'}
+            <button className={`ctrl-btn ${!isMicrophoneEnabled ? 'muted' : 'active'}`} onClick={() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}>
+              {isMicrophoneEnabled ? '🎙️ Açık' : '🔇 Kapalı'}
             </button>
-
-            {/* KULAKLIĞI / SESİ KAPAT (DEAFEN) */}
-            <button 
-              className={`ctrl-btn ${isDeafened ? 'muted' : ''}`} 
-              onClick={() => setIsDeafened(!isDeafened)}
-            >
-              {isDeafened ? '🎧 Sesi Aç' : '🎧 Kulaklığı Kapat'}
+            <button className={`ctrl-btn ${isDeafened ? 'muted' : ''}`} onClick={toggleDeafen}>
+              {isDeafened ? '🎧 Sesi Aç' : '🎧 Sağır Et'}
             </button>
-
-            <button 
-              className={`ctrl-btn ${isKrispActive ? 'krisp-active' : 'krisp-inactive'}`} 
-              onClick={toggleKrisp}
-              disabled={!isMicrophoneEnabled}
-            >
+            <button className={`ctrl-btn ${isKrispActive ? 'krisp-active' : 'krisp-inactive'}`} onClick={toggleKrisp} disabled={!isMicrophoneEnabled}>
               {krispStatus}
             </button>
-            
             <button className={`ctrl-btn ${isScreenShareEnabled ? 'active' : ''}`} onClick={() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled)}>
-              📺 {isScreenShareEnabled ? 'Yayını Durdur' : 'Ekran Paylaş'}
+              📺 {isScreenShareEnabled ? 'Yayını Kapat' : 'Ekran Paylaş'}
             </button>
-
             <button className="leave-btn" onClick={onLeave}>🚪 Ayrıl</button>
           </div>
         </footer>
       </div>
 
       <div className="custom-chat-panel">
-        <div className="chat-header">💬 Yazılı Sohbet</div>
+        <div className="chat-header">💬 Sohbet</div>
         <div className="chat-messages">
           <div className="chat-sys-msg">Mesajlar uçtan uca şifrelidir.</div>
           {chatMessages.map(m => (
@@ -295,12 +280,11 @@ export default function AudioRoom({ roomName, onLeave }) {
           <div ref={chatEndRef} />
         </div>
         <div className="chat-input-area">
-          <input value={msg} onChange={e => setMsg(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage()} placeholder="Mesaj yaz..." />
+          <input value={msg} onChange={e => setMsg(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage()} placeholder="Mesaj..." />
           <button onClick={handleSendMessage}>Gönder</button>
         </div>
       </div>
 
-      {/* Deafen aktifse tüm odanın sesini mute'la */}
       <RoomAudioRenderer volume={isDeafened ? 0 : 1} />
     </div>
   );
