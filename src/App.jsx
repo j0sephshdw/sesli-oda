@@ -3,7 +3,6 @@ import { LiveKitRoom } from '@livekit/components-react';
 import AudioRoom from './AudioRoom';
 import '@livekit/components-styles';
 
-// Linkini doğrudan buraya kalıcı olarak sabitledik. En garantili yöntem!
 const LIVEKIT_URL = 'wss://bizim-dc-x3m53dz5.livekit.cloud';
 
 export default function App() {
@@ -13,16 +12,6 @@ export default function App() {
   const [token, setToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [isInvite, setIsInvite] = useState(false);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const roomParam = params.get('room');
-    if (roomParam) {
-      setRoomName(roomParam);
-      setIsInvite(true);
-    }
-  }, []);
 
   const handleJoin = async (e) => {
     e.preventDefault();
@@ -52,14 +41,6 @@ export default function App() {
     }
   };
 
-  const handleDisconnect = () => {
-    setToken('');
-    window.history.replaceState({}, document.title, window.location.pathname);
-    setIsInvite(false);
-    setRoomName('');
-    setPassword('');
-  };
-
   if (token) {
     return (
       <LiveKitRoom
@@ -67,17 +48,10 @@ export default function App() {
         audio={true}
         token={token}
         serverUrl={LIVEKIT_URL}
-        onDisconnected={handleDisconnect}
+        onDisconnected={() => setToken('')}
         data-lk-theme="default"
-        options={{
-          audioCaptureDefaults: {
-            autoGainControl: false, // Oyun oynarken ses aniden kısılmasın
-            echoCancellation: true, // Yankı önleyici
-            noiseSuppression: true, // Klavye ve dip sesleri için Yapay Zeka filtresi
-          }
-        }}
       >
-        <AudioRoom roomName={roomName} onLeave={handleDisconnect} />
+        <AudioRoom roomName={roomName} onLeave={() => setToken('')} />
       </LiveKitRoom>
     );
   }
@@ -85,9 +59,8 @@ export default function App() {
   return (
     <div className="join-container">
       <div className="join-card">
-        <h2>{isInvite ? `🔊 ${roomName} Odasına Davetlisin` : '🔊 Sesli Odaya Katıl'}</h2>
+        <h2>🔊 Sesli Odaya Katıl</h2>
         {error && <div className="error-msg">{error}</div>}
-        
         <form onSubmit={handleJoin}>
           <div className="form-group">
             <label>Adın</label>
@@ -95,10 +68,10 @@ export default function App() {
           </div>
           <div className="form-group">
             <label>Oda Adı</label>
-            <input type="text" value={roomName} onChange={(e) => setRoomName(e.target.value)} readOnly={isInvite} style={{ opacity: isInvite ? 0.6 : 1 }} maxLength={20} required />
+            <input type="text" value={roomName} onChange={(e) => setRoomName(e.target.value)} maxLength={20} required />
           </div>
           <div className="form-group">
-            <label>Oda Şifresi {isInvite ? '(Varsa)' : '(Boş bırakırsan şifresiz olur)'}</label>
+            <label>Oda Şifresi (Varsa)</label>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Gizli Şifre" />
           </div>
           <button type="submit" disabled={loading} className="join-btn">

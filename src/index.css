@@ -11,7 +11,6 @@ body {
     min-height: 100vh;
 }
 
-/* GİRİŞ EKRANI */
 .join-container {
     display: flex;
     justify-content: center;
@@ -90,7 +89,7 @@ body {
     font-weight: bold;
 }
 
-/* ODA İÇİ TASARIM */
+/* ODA İÇİ ANA DÜZEN */
 .custom-room-layout {
     display: flex;
     height: 100vh;
@@ -103,9 +102,9 @@ body {
     flex-direction: column;
     padding: 20px;
     background: #1e1f22;
-    min-width: 0; /* Taşıp sağ paneli ezmesini engeller */
 }
 
+/* HEADER */
 .room-header {
     display: flex;
     justify-content: space-between;
@@ -129,6 +128,14 @@ body {
     animation: pulse 2s infinite;
 }
 
+.people-count {
+    background: #2b2d31;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: bold;
+}
+
 @keyframes pulse {
     0% {
         opacity: 1;
@@ -143,51 +150,97 @@ body {
     }
 }
 
-.invite-btn {
-    background: #23a55a;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: bold;
-    transition: 0.2s;
-}
-
-    .invite-btn:hover {
-        background: #1a7c43;
-    }
-
-/* Grid Layout Container */
-.participants-grid {
+/* DİNAMİK EKRAN: YAYIN VS KİŞİLER */
+.dynamic-view-area {
     flex: 1;
     display: flex;
-    min-height: 0;
-    width: 100%;
+    justify-content: center;
+    align-items: center;
+    background: #2b2d31;
+    border-radius: 12px;
+    padding: 20px;
+    overflow-y: auto;
 }
 
-/* LiveKit'in Kendi Grid Yapısına Ayar */
-.lk-grid-layout {
-    gap: 15px;
+.screen-share-grid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.lk-participant-tile {
+    border-radius: 12px !important;
+    overflow: hidden;
     width: 100%;
     height: 100%;
 }
 
-/* KİŞİ PROFİLLERİ VE KONUŞAN KİŞİ ANİMASYONU */
-.lk-participant-tile {
-    border-radius: 12px !important;
-    background: #2b2d31 !important;
-    overflow: hidden;
-    border: 3px solid transparent;
-    transition: all 0.2s ease-in-out;
+/* KİŞİ PROFİL KARTLARI (SADECE EMOJİ VE İSİM) */
+.voice-users-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    justify-content: center;
+    width: 100%;
 }
 
-    .lk-participant-tile[data-lk-speaking="true"] {
-        border-color: #23a55a !important;
-        box-shadow: 0 0 15px rgba(35, 165, 90, 0.4) !important;
+.voice-user-card {
+    background: #1e1f22;
+    width: 140px;
+    height: 160px;
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 3px solid transparent;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+    .voice-user-card .avatar {
+        font-size: 50px;
+        margin-bottom: 10px;
+        transition: 0.2s;
     }
 
-/* ALT KONTROL BUTONLARI */
+    .voice-user-card .name {
+        font-weight: bold;
+        font-size: 15px;
+        color: #f2f3f5;
+    }
+
+    .voice-user-card .speak-ring {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        font-size: 14px;
+        animation: bounce 0.4s infinite alternate;
+    }
+
+@keyframes bounce {
+    from {
+        transform: translateY(0);
+    }
+
+    to {
+        transform: translateY(-3px);
+    }
+}
+
+/* KONUŞUNCA ÇIKAN YEŞİL EFEKT */
+.voice-user-card.speaking {
+    border-color: #23a55a;
+    box-shadow: 0 0 15px rgba(35, 165, 90, 0.4);
+}
+
+    .voice-user-card.speaking .avatar {
+        transform: scale(1.1);
+    }
+
+/* KONTROL BUTONLARI */
 .room-controls-wrapper {
     display: flex;
     justify-content: center;
@@ -195,34 +248,44 @@ body {
     gap: 15px;
     margin-top: 20px;
     padding: 15px;
-    background: #2b2d31;
-    border-radius: 12px;
+    background: transparent;
 }
-
-.interactive-actions {
-    display: flex;
-    gap: 10px;
-}
-
-.action-btn {
-    background: #1e1f22;
-    border: 1px solid #3f4147;
-    padding: 8px 12px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 16px;
-    transition: 0.2s;
-}
-
-    .action-btn:hover {
-        background: #3f4147;
-    }
 
 .main-controls {
     display: flex;
     align-items: center;
     gap: 15px;
+    flex-wrap: wrap;
+    justify-content: center;
 }
+
+.ctrl-btn {
+    background: #4f545c;
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+    .ctrl-btn:hover {
+        background: #5d6269;
+    }
+
+    .ctrl-btn.active {
+        background: #23a55a;
+    }
+
+    .ctrl-btn.muted {
+        background: #da373c;
+    }
+
+    .ctrl-btn.krisp-active {
+        background: #5865f2;
+        box-shadow: 0 0 10px rgba(88, 101, 242, 0.5);
+    }
 
 .leave-btn {
     background: transparent;
@@ -233,8 +296,6 @@ body {
     font-weight: bold;
     cursor: pointer;
     transition: 0.2s;
-    height: 40px;
-    margin-left: 15px;
 }
 
     .leave-btn:hover {
@@ -243,18 +304,91 @@ body {
     }
 
 /* SOHBET PANELİ */
-.chat-panel {
-    width: 350px;
+.custom-chat-panel {
+    width: 320px;
     background: #2b2d31;
     border-left: 1px solid #1e1f22;
     display: flex;
     flex-direction: column;
 }
 
-/* Sohbet Paneli içini LiveKit'in şablonuna tam oturttuk */
-.lk-chat {
-    width: 100%;
-    height: 100%;
-    border: none !important;
-    background: transparent !important;
+.chat-header {
+    padding: 20px;
+    font-weight: bold;
+    border-bottom: 1px solid #1e1f22;
+    background: #313338;
 }
+
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.chat-sys-msg {
+    color: #949ba4;
+    font-size: 12px;
+    font-style: italic;
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+.chat-msg {
+    background: #1e1f22;
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.chat-sender {
+    color: #5865f2;
+    font-weight: bold;
+    margin-right: 5px;
+}
+
+.chat-text {
+    color: #f2f3f5;
+    word-wrap: break-word;
+}
+
+.chat-input-area {
+    padding: 15px;
+    display: flex;
+    gap: 10px;
+    border-top: 1px solid #1e1f22;
+    background: #313338;
+}
+
+    .chat-input-area input {
+        flex: 1;
+        padding: 12px;
+        border-radius: 6px;
+        border: none;
+        background: #1e1f22;
+        color: white;
+        outline: none;
+        width: 100%;
+    }
+
+        .chat-input-area input:focus {
+            border: 1px solid #5865f2;
+            padding: 11px;
+        }
+
+    .chat-input-area button {
+        padding: 10px 15px;
+        background: #5865f2;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: bold;
+    }
+
+        .chat-input-area button:hover {
+            background: #4752c4;
+        }
