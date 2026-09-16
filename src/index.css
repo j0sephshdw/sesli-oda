@@ -866,7 +866,7 @@ body {
    12. YENİ KART DİZAYNI VE AKILLI HOVER EFEKTLERİ
    ========================================================================== */
 
-/* Kamera görüntüsü ayarları - HATA GİDERİLDİ (Sadece kendi kameramız aynalanır, başkaları düz kalır) */
+/* Kamera görüntüsü ayarları */
 .user-video {
     position: absolute;
     top: 0;
@@ -878,7 +878,12 @@ body {
     border-radius: 12px;
 }
 
-/* Dinamik renkli yeni nesil avatar */
+    /* YENİ: Sadece kendi kameramızı ayna efekti yapar, başkalarını normal bırakır */
+    .user-video.mirror {
+        transform: scaleX(-1);
+    }
+
+/* Dinamik renkli yeni nesil avatar (Hata düzeltildi, daima ortada) */
 .voice-user-card .avatar {
     width: 80px !important;
     height: 80px !important;
@@ -893,9 +898,10 @@ body {
     margin-bottom: 0 !important;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
     text-transform: uppercase;
+    position: relative; /* Sabitleme için eklendi */
 }
 
-/* Discord Stili Alt Bilgi Bandı (İsim ve Sustu İkonu) */
+/* Discord Stili Alt Bilgi Bandı */
 .card-footer {
     position: absolute;
     bottom: 12px;
@@ -946,6 +952,7 @@ body {
     backdrop-filter: blur(3px);
 }
 
+/* Kendi kartımızda gereksiz yere menü açılmasını engelledik */
 .voice-user-card:hover .card-hover-overlay {
     opacity: 1;
 }
@@ -985,7 +992,6 @@ body {
         margin-bottom: 5px;
     }
 
-/* Çakışmayı engellemek için eski rozeti gizliyoruz */
 .voice-user-card > .muted-badge {
     display: none;
 }
@@ -1006,3 +1012,9 @@ body {
         border-radius: 0;
         object-fit: contain; /* Tam ekranda görüntünün kesilmesini engeller */
     }
+
+/* Header Sağ Kısım Düzeni */
+.header-actions {
+    display: flex;
+    align-items: center;
+}

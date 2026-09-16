@@ -38,11 +38,12 @@ export default function AudioRoom({ roomName, onLeave }) {
   const [isDeafened, setIsDeafened] = useState(false);
   const [isHandRaised, setIsHandRaised] = useState(false);
   const [floatingEmojis, setFloatingEmojis] = useState([]);
+  
+  // YENİ: Tiyatro Modu (Sohbeti Gizle/Aç)
+  const [isChatVisible, setIsChatVisible] = useState(true);
 
   const processorRef = useRef(null);
   const stageRef = useRef(null);
-  
-  // YENİ: Önceki mesaj sayısını tutarak yeni mesaj geldiğinde ses çalmasını sağlar
   const prevChatCount = useRef(0);
 
   const playTone = (type) => {
@@ -65,20 +66,26 @@ export default function AudioRoom({ roomName, onLeave }) {
         osc.frequency.setValueAtTime(600, ctx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(300, ctx.currentTime + 0.15);
       } else if (type === 'message') {
-        // DİSCORD MESAJ SESİ (POP)
         osc.frequency.setValueAtTime(800, ctx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.1);
         gain.gain.setValueAtTime(0.01, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.1);
-        return; 
+      } else if (type === 'screen_share') {
+        // Ekran paylaşımı için özel dijital bildirim
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(440, ctx.currentTime);
+        osc.frequency.setValueAtTime(880, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.01, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
       }
       
-      gain.gain.setValueAtTime(0.02, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+      if(type !== 'message' && type !== 'screen_share'){
+         gain.gain.setValueAtTime(0.02, ctx.currentTime);
+         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+      }
+
       osc.start();
-      osc.stop(ctx.currentTime + 0.2);
+      osc.stop(ctx.currentTime + (type === 'screen_share' ? 0.2 : 0.15));
     } catch(e) {}
   };
 
@@ -90,16 +97,18 @@ export default function AudioRoom({ roomName, onLeave }) {
   };
 
   useEffect(() => {
-    // Yeni mesaj geldiyse ve gönderen biz değilsek bildirim sesi çal
     if (chatMessages.length > prevChatCount.current) {
       const lastMsg = chatMessages[chatMessages.length - 1];
-      if (lastMsg.from?.identity !== localParticipant?.identity) {
-        playTone('message');
-      }
+      if (lastMsg.from?.identity !== localParticipant?.identity) playTone('message');
       prevChatCount.current = chatMessages.length;
     }
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, localParticipant]);
+
+  // Yeni Ekran Paylaşımı Bildirimi
+  useEffect(() => {
+    if(screenTracks.length > 0) playTone('screen_share');
+  }, [screenTracks.length]);
 
   useEffect(() => {
     const setupNoiseCancellation = async () => {
@@ -214,7 +223,6 @@ export default function AudioRoom({ roomName, onLeave }) {
     onLeave();
   };
 
-  // GENEL TAM EKRAN VE PIP FONKSİYONLARI (Kamera Kartları İçin)
   const toggleCardFullScreen = (e) => {
     const card = e.currentTarget.closest('.voice-user-card, .screen-share-stage');
     if (!document.fullscreenElement) {
@@ -259,7 +267,12 @@ export default function AudioRoom({ roomName, onLeave }) {
             <span className="live-badge">🔴 Canlı</span>
             <span className="people-count">👥 {participants.length} Kişi</span>
           </div>
-          <button onClick={copyInvite} className="invite-btn">{inviteText}</button>
+          <div className="header-actions">
+            <button onClick={() => setIsChatVisible(!isChatVisible)} className="action-btn" title="Sohbeti Gizle/Aç">
+              {isChatVisible ? '💬 Sohbeti Gizle' : '💬 Sohbeti Aç'}
+            </button>
+            <button onClick={copyInvite} className="invite-btn" style={{marginLeft: '10px'}}>{inviteText}</button>
+          </div>
         </header>
 
         <div className={`dynamic-view-area ${screenTracks.length > 0 ? 'has-screen' : ''}`}>
@@ -280,7 +293,10 @@ export default function AudioRoom({ roomName, onLeave }) {
               const isUserHandRaised = p.attributes?.handRaised === 'true';
               const displayName = (p.name || p.identity || 'Misafir').split('_')[0];
               const isUserSharingScreen = p.isScreenShareEnabled;
-              const isCamOn = p.isCameraEnabled || p.getTrackPublication(Track.Source.Camera)?.track;
+              // Kamera Açık mı Kontrolü (Hata düzeltildi)
+              const isCamOn = p.isCameraEnabled; 
+              // Ayna efekti sadece bize özel olsun
+              const isMirror = isCamOn && p.identity === localParticipant?.identity;
 
               return (
                 <div key={p.identity} className={`voice-user-card ${p.isSpeaking ? 'speaking' : ''}`} onDoubleClick={isCamOn ? toggleCardFullScreen : undefined}>
@@ -291,14 +307,13 @@ export default function AudioRoom({ roomName, onLeave }) {
 
                   {/* DİNAMİK AVATAR VEYA KAMERA */}
                   {isCamOn ? (
-                    <VideoTrack trackRef={{ participant: p, source: Track.Source.Camera }} className="user-video" />
+                    <VideoTrack trackRef={{ participant: p, source: Track.Source.Camera }} className={`user-video ${isMirror ? 'mirror' : ''}`} />
                   ) : (
                     <div className="avatar" style={{ backgroundColor: getAvatarColor(displayName) }}>
                       {displayName.charAt(0).toUpperCase()}
                     </div>
                   )}
 
-                  {/* KART ALTI DİSCORD BİLGİ BANDI */}
                   <div className="card-footer">
                     <span className="name">{displayName}</span>
                     <span className="status-icons">
@@ -312,11 +327,9 @@ export default function AudioRoom({ roomName, onLeave }) {
                      </div>
                   )}
                   
-                  {/* YENİ AKILLI HOVER MENÜSÜ (Kamera + Ses Kontrolleri) */}
+                  {/* YENİ: KUSURSUZ HOVER MENÜSÜ */}
                   {(p.identity !== localParticipant?.identity || isCamOn) && (
                     <div className="card-hover-overlay">
-                      
-                      {/* Kamera açıksa PiP ve Tam Ekran butonlarını göster */}
                       {isCamOn && (
                         <div className="cam-actions">
                           <button onClick={toggleCardPiP} title="Pencere İçinde Aç">🗗 PiP</button>
@@ -324,7 +337,7 @@ export default function AudioRoom({ roomName, onLeave }) {
                         </div>
                       )}
 
-                      {/* Başkasının kartıysa Ses Ayarını göster */}
+                      {/* Başkasının sesini kısmak için Hover */}
                       {p.identity !== localParticipant?.identity && (
                         <div className="vol-slider-wrapper">
                           <span>Kullanıcı Sesi</span>
@@ -378,31 +391,34 @@ export default function AudioRoom({ roomName, onLeave }) {
         </footer>
       </div>
 
-      <div className="custom-chat-panel">
-        <div className="chat-header">💬 Sohbet</div>
-        <div className="chat-messages">
-          <div className="chat-sys-msg">Mesajlar uçtan uca şifrelidir.</div>
-          {chatMessages.map(m => (
-            <div key={m.id} className="chat-msg">
-              <div className="chat-msg-header">
-                <span className="chat-sender">{(m.from?.name || m.from?.identity || 'Anonim').split('_')[0]}</span>
-                <span className="chat-time">{formatTime(m.timestamp)}</span>
+      {/* TİYATRO MODU (Sohbet Gizlenmişse Bu Kısım Ekranda Gözükmez) */}
+      {isChatVisible && (
+        <div className="custom-chat-panel">
+          <div className="chat-header">💬 Sohbet</div>
+          <div className="chat-messages">
+            <div className="chat-sys-msg">Mesajlar uçtan uca şifrelidir.</div>
+            {chatMessages.map(m => (
+              <div key={m.id} className="chat-msg">
+                <div className="chat-msg-header">
+                  <span className="chat-sender">{(m.from?.name || m.from?.identity || 'Anonim').split('_')[0]}</span>
+                  <span className="chat-time">{formatTime(m.timestamp)}</span>
+                </div>
+                <div className="chat-text">{m.message}</div>
               </div>
-              <div className="chat-text">{m.message}</div>
-            </div>
-          ))}
-          <div ref={chatEndRef} />
+            ))}
+            <div ref={chatEndRef} />
+          </div>
+          <div className="chat-input-area">
+            <input 
+              value={msg} 
+              onChange={e => setMsg(e.target.value)} 
+              onKeyDown={e => e.key === 'Enter' && handleSendMessage()} 
+              placeholder="Mesaj..." 
+            />
+            <button onClick={handleSendMessage}>Gönder</button>
+          </div>
         </div>
-        <div className="chat-input-area">
-          <input 
-            value={msg} 
-            onChange={e => setMsg(e.target.value)} 
-            onKeyDown={e => e.key === 'Enter' && handleSendMessage()} 
-            placeholder="Mesaj..." 
-          />
-          <button onClick={handleSendMessage}>Gönder</button>
-        </div>
-      </div>
+      )}
 
       <div className="watermark-badge-left">
         ⚡ Made by <span>Hacıkopter</span>
