@@ -587,3 +587,88 @@ body {
     align-items: center;
     box-shadow: 0 2px 8px rgba(218, 55, 60, 0.4);
 }
+/* --- YENİ EKLENEN İYİLEŞTİRMELER --- */
+
+/* 1. Ekran Ortasındaki Boş Alanı Dolduran Esnek Grid Düzeni */
+.dynamic-view-area {
+    display: flex;
+    flex-direction: column;
+    justify-content: center; /* Kartları dikeyde tam ortala */
+    align-items: center; /* Kartları yatayda tam ortala */
+}
+
+.voice-users-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    justify-content: center;
+    align-items: center;
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.voice-user-card {
+    width: 180px;
+    height: 200px;
+    background: #232428;
+    border-radius: 20px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+    .voice-user-card:hover {
+        transform: translateY(-4px);
+    }
+
+/* 2. Yüzen Emoji Animasyon Alanı */
+.floating-emoji-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 9999;
+    overflow: hidden;
+}
+
+.floating-emoji {
+    position: absolute;
+    bottom: 80px;
+    font-size: 45px;
+    animation: floatUp 2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+@keyframes floatUp {
+    0% {
+        opacity: 1;
+        transform: translateY(0) scale(0.6) rotate(0deg);
+    }
+
+    50% {
+        opacity: 0.9;
+        transform: translateY(-250px) scale(1.2) rotate(-10deg);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateY(-450px) scale(1) rotate(10deg);
+    }
+}
+
+/* 3. Konuşma Halesi (Neon Glow) İyileştirmesi */
+.voice-user-card.speaking {
+    border-color: #23a55a;
+    box-shadow: 0 0 25px rgba(35, 165, 90, 0.6);
+    animation: pulseGlow 1.5s infinite alternate;
+}
+
+@keyframes pulseGlow {
+    from {
+        box-shadow: 0 0 15px rgba(35, 165, 90, 0.4);
+    }
+
+    to {
+        box-shadow: 0 0 30px rgba(35, 165, 90, 0.8);
+    }
+}

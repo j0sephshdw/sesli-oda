@@ -26,6 +26,9 @@ export default function AudioRoom({ roomName, onLeave }) {
   const [isKrispActive, setIsKrispActive] = useState(false);
   const [krispStatus, setKrispStatus] = useState('🎧 Gürültü Engelleyici (KAPALI)');
   const [inviteText, setInviteText] = useState('🔗 Davet Linki Kopyala');
+  const [isDeafened, setIsDeafened] = useState(false); // Kulaklık Sustur
+  const [floatingEmojis, setFloatingEmojis] = useState([]); // Ekranda yüzen emojiler
+
   const processorRef = useRef(null);
 
   // Otomatik Sohbet Kaydırma
@@ -33,10 +36,8 @@ export default function AudioRoom({ roomName, onLeave }) {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  // Mikrofon ve Krisp Durum Yönetimi
+  // Krisp Kurulumu
   useEffect(() => {
-    let currentProcessor = null;
-
     const setupKrisp = async () => {
       if (!isMicrophoneEnabled) {
         setIsKrispActive(false);
@@ -54,7 +55,7 @@ export default function AudioRoom({ roomName, onLeave }) {
 
       try {
         setKrispStatus('🎧 Filtre Başlatılıyor...');
-        currentProcessor = KrispNoiseFilter();
+        const currentProcessor = KrispNoiseFilter();
         processorRef.current = currentProcessor;
 
         await track.setProcessor(currentProcessor);
@@ -78,35 +79,68 @@ export default function AudioRoom({ roomName, onLeave }) {
     };
   }, [isMicrophoneEnabled, localParticipant]);
 
-  // Giriş / Çıkış Ses Efektleri (SFX)
+  // Ses Efektleri & Veri Paket Dinleyicisi (Yüzen Emojiler İçin)
   useEffect(() => {
     const playTone = (type) => {
-        try {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.connect(gain); gain.connect(ctx.destination);
-            osc.type = 'sine';
-            if (type === 'join') {
-                osc.frequency.setValueAtTime(440, ctx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1);
-            } else {
-                osc.frequency.setValueAtTime(880, ctx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.1);
-            }
-            gain.gain.setValueAtTime(0.05, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
-            osc.start(); osc.stop(ctx.currentTime + 0.15);
-        } catch(e) {}
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'sine';
+        if (type === 'join') {
+          osc.frequency.setValueAtTime(440, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1);
+        } else {
+          osc.frequency.setValueAtTime(880, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.1);
+        }
+        gain.gain.setValueAtTime(0.05, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+        osc.start(); osc.stop(ctx.currentTime + 0.15);
+      } catch(e) {}
+    };
+
+    // LiveKit Data Packet Alımı (Anlık Canlı Tepkiler)
+    const handleDataReceived = (payload, participant) => {
+      try {
+        const str = new TextDecoder().decode(payload);
+        const data = JSON.parse(str);
+        if (data.type === 'EMOJI_REACTION') {
+          spawnFloatingEmoji(data.emoji);
+        }
+      } catch(e) {}
     };
 
     room.on(RoomEvent.ParticipantConnected, () => playTone('join'));
     room.on(RoomEvent.ParticipantDisconnected, () => playTone('leave'));
+    room.on(RoomEvent.DataReceived, handleDataReceived);
+
     return () => {
       room.removeAllListeners(RoomEvent.ParticipantConnected);
       room.removeAllListeners(RoomEvent.ParticipantDisconnected);
+      room.removeAllListeners(RoomEvent.DataReceived);
     };
   }, [room]);
+
+  // Yüzen Emoji Oluşturucu
+  const spawnFloatingEmoji = (emoji) => {
+    const id = Date.now() + Math.random();
+    const leftPos = Math.floor(Math.random() * 60) + 20; // %20 ile %80 arasında rastgele x pozisyonu
+    setFloatingEmojis((prev) => [...prev, { id, emoji, left: leftPos }]);
+
+    setTimeout(() => {
+      setFloatingEmojis((prev) => prev.filter((item) => item.id !== id));
+    }, 2000);
+  };
+
+  // Emoji Gönderme Fonksiyonu (Data Packet ile)
+  const sendEmojiReaction = (emoji) => {
+    spawnFloatingEmoji(emoji);
+    const data = JSON.stringify({ type: 'EMOJI_REACTION', emoji });
+    const encoder = new TextEncoder();
+    room.localParticipant.publishData(encoder.encode(data), { reliable: true });
+  };
 
   const handleSendMessage = () => {
     if (msg.trim()) { send(msg); setMsg(''); }
@@ -119,11 +153,6 @@ export default function AudioRoom({ roomName, onLeave }) {
     setTimeout(() => setInviteText('🔗 Davet Linki Kopyala'), 2000);
   };
 
-  const sendEmoji = (emoji) => {
-    send(`Tepki gönderdi: ${emoji}`);
-  };
-
-  // Manuel Krisp Aç/Kapat Kontrolü
   const toggleKrisp = async () => {
     const track = localParticipant?.getTrackPublication(Track.Source.Microphone)?.track;
     if (!track || !isMicrophoneEnabled) return;
@@ -150,6 +179,15 @@ export default function AudioRoom({ roomName, onLeave }) {
 
   return (
     <div className="custom-room-layout">
+      {/* YÜZEN EMOJİ EKRANI (OVERLAY) */}
+      <div className="floating-emoji-container">
+        {floatingEmojis.map((item) => (
+          <span key={item.id} className="floating-emoji" style={{ left: `${item.left}%` }}>
+            {item.emoji}
+          </span>
+        ))}
+      </div>
+
       <div className="main-panel">
         <header className="room-header">
           <div className="header-info">
@@ -201,10 +239,11 @@ export default function AudioRoom({ roomName, onLeave }) {
 
         <footer className="room-controls-wrapper">
           <div className="interactive-actions">
-            <button onClick={() => sendEmoji('✋')} className="action-btn">✋</button>
-            <button onClick={() => sendEmoji('🔥')} className="action-btn">🔥</button>
-            <button onClick={() => sendEmoji('👍')} className="action-btn">👍</button>
-            <button onClick={() => sendEmoji('😂')} className="action-btn">😂</button>
+            <button onClick={() => sendEmojiReaction('✋')} className="action-btn">✋</button>
+            <button onClick={() => sendEmojiReaction('🔥')} className="action-btn">🔥</button>
+            <button onClick={() => sendEmojiReaction('👍')} className="action-btn">👍</button>
+            <button onClick={() => sendEmojiReaction('😂')} className="action-btn">😂</button>
+            <button onClick={() => sendEmojiReaction('🎉')} className="action-btn">🎉</button>
           </div>
           
           <div className="main-controls">
@@ -213,6 +252,14 @@ export default function AudioRoom({ roomName, onLeave }) {
               onClick={() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
             >
               {isMicrophoneEnabled ? '🎙️ Mikrofon Açık' : '🔇 Mikrofon Kapalı'}
+            </button>
+
+            {/* KULAKLIĞI / SESİ KAPAT (DEAFEN) */}
+            <button 
+              className={`ctrl-btn ${isDeafened ? 'muted' : ''}`} 
+              onClick={() => setIsDeafened(!isDeafened)}
+            >
+              {isDeafened ? '🎧 Sesi Aç' : '🎧 Kulaklığı Kapat'}
             </button>
 
             <button 
@@ -252,7 +299,9 @@ export default function AudioRoom({ roomName, onLeave }) {
           <button onClick={handleSendMessage}>Gönder</button>
         </div>
       </div>
-      <RoomAudioRenderer />
+
+      {/* Deafen aktifse tüm odanın sesini mute'la */}
+      <RoomAudioRenderer volume={isDeafened ? 0 : 1} />
     </div>
   );
 }
