@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LiveKitRoom } from '@livekit/components-react';
-import { VideoPresets, ScreenSharePresets } from 'livekit-client';
+import { Track } from 'livekit-client';
 import AudioRoom from './AudioRoom';
 import '@livekit/components-styles';
 
@@ -8,17 +8,22 @@ const LIVEKIT_URL = 'wss://bizim-dc-x3m53dz5.livekit.cloud';
 
 export default function App() {
   const [authMode, setAuthMode] = useState('login'); 
+  
+  // Form State'leri
+  const [email, setEmail] = useState('');
   const [username, setUsername] = useState(localStorage.getItem('savedUsername') || '');
   const [password, setPassword] = useState('');
   
+  // Oda State'leri
   const [roomName, setRoomName] = useState('');
   const [roomPassword, setRoomPassword] = useState('');
   const [myRooms, setMyRooms] = useState([]);
   
+  // LiveKit State'leri
   const [token, setToken] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   
-  // YENİ: Gelişmiş Hata ve UI State'leri
+  // UI State'leri
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -40,7 +45,6 @@ export default function App() {
     } catch (err) {}
   };
 
-  // YENİ: Hata durumunda ekranı titreten fonksiyon
   const triggerError = (msg) => {
     setError(msg);
     setShake(true);
@@ -53,13 +57,14 @@ export default function App() {
     try {
       const res = await fetch('/api/register', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ email, username, password })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       alert('Kayıt Başarılı! Lütfen giriş yapın.');
       setAuthMode('login');
       setPassword('');
+      setEmail('');
     } catch (err) { triggerError(err.message); }
     setLoading(false);
   };
@@ -117,6 +122,7 @@ export default function App() {
     setLoading(false);
   };
 
+  // 🔴 ODA İÇİ GÖRÜNÜM 🔴
   if (authMode === 'room' && token) {
     return (
       <LiveKitRoom
@@ -133,6 +139,7 @@ export default function App() {
     );
   }
 
+  // 🟢 DASHBOARD GÖRÜNÜMÜ 🟢
   if (authMode === 'dashboard') {
     return (
       <div className="dashboard-container">
@@ -183,7 +190,7 @@ export default function App() {
     );
   }
 
-  // YENİ: DİSCORD BİREBİR GİRİŞ/KAYIT EKRANI
+  // 🔵 GİRİŞ / KAYIT / MİSAFİR GÖRÜNÜMÜ 🔵
   return (
     <div className="premium-auth-wrapper">
       <div className={`premium-auth-card ${shake ? 'shake' : ''}`}>
@@ -195,9 +202,17 @@ export default function App() {
         {error && <div className="auth-error">{error}</div>}
         
         <form onSubmit={authMode === 'login' ? handleLogin : authMode === 'register' ? handleRegister : handleJoinRoom}>
+          
+          {authMode === 'register' && (
+            <div className="premium-form-group">
+              <label>E-POSTA <span className="req">*</span></label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="ornek@mail.com" />
+            </div>
+          )}
+
           <div className="premium-form-group">
             <label>KULLANICI ADI <span className="req">*</span></label>
-            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} required />
+            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} required placeholder="Kullanıcı Adı" />
           </div>
           
           {authMode !== 'guest' && (
@@ -209,6 +224,7 @@ export default function App() {
                   value={password} 
                   onChange={(e) => setPassword(e.target.value)} 
                   required 
+                  placeholder="Şifre"
                 />
                 <button type="button" className="eye-btn" onClick={() => setShowPassword(!showPassword)}>
                   {showPassword ? '🙈' : '👁️'}
@@ -222,12 +238,12 @@ export default function App() {
             <>
               <div className="premium-form-group">
                 <label>ODA ADI <span className="req">*</span></label>
-                <input type="text" value={roomName} onChange={(e) => setRoomName(e.target.value)} required />
+                <input type="text" value={roomName} onChange={(e) => setRoomName(e.target.value)} required placeholder="Oda Adı" />
               </div>
               <div className="premium-form-group">
                 <label>ODA ŞİFRESİ</label>
                 <div className="password-wrapper">
-                  <input type={showPassword ? "text" : "password"} value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} />
+                  <input type={showPassword ? "text" : "password"} value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} placeholder="Şifre (Varsa)" />
                   <button type="button" className="eye-btn" onClick={() => setShowPassword(!showPassword)}>
                     {showPassword ? '🙈' : '👁️'}
                   </button>
@@ -237,7 +253,7 @@ export default function App() {
           )}
 
           <button type="submit" disabled={loading} className="premium-submit-btn">
-            {loading ? 'İşleniyor...' : authMode === 'login' ? 'Giriş Yap' : authMode === 'register' ? 'Devam Et' : 'Odaya Gir'}
+            {loading ? 'İşleniyor...' : authMode === 'login' ? 'Giriş Yap' : authMode === 'register' ? 'Kayıt Ol' : 'Odaya Gir'}
           </button>
         </form>
 
