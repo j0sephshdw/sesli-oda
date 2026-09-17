@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { LiveKitRoom } from '@livekit/components-react';
 import AudioRoom from './AudioRoom';
 import '@livekit/components-styles';
-import './index.css'; // Sadece index.css kullanıyoruz
+import './index.css';
 
 const LIVEKIT_URL = 'wss://bizim-dc-x3m53dz5.livekit.cloud';
 
@@ -67,15 +67,13 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      // Başarılı kayıt sonrası doğrulama (verify) ekranına geçiş
       alert('Kayıt Başarılı! Lütfen e-posta adresinize gelen 6 haneli kodu giriniz.');
       setAuthMode('verify');
-      setPassword(''); // Güvenlik için şifreyi bellekten siliyoruz
+      setPassword('');
     } catch (err) { triggerError(err.message); }
     setLoading(false);
   };
 
-  // E-posta doğrulama kodunu backend'e iletir
   const handleVerify = async (e) => {
     e.preventDefault();
     setError(''); setLoading(true);
@@ -115,125 +113,9 @@ export default function App() {
 
   const handleLogout = () => {
     localStorage.removeItem('savedUsername');
-    setUsername(''); setPassword(''); setMyRooms([]);
-    setAuthMode('login```jsx
-import React, { useState, useEffect } from 'react';
-import { LiveKitRoom } from '@livekit/components-react';
-import AudioRoom from './AudioRoom';
-import '@livekit/components-styles';
-import './index.css'; 
-
-const LIVEKIT_URL = 'wss://bizim-dc-x3m53dz5.livekit.cloud';
-
-export default function App() {
-  const [authMode, setAuthMode] = useState('login'); 
-  
-  // Form State'leri
-  const [email, setEmail] = useState('');
-  const [username, setUsername] = useState(localStorage.getItem('savedUsername') || '');
-  const [password, setPassword] = useState('');
-  
-  // Oda State'leri
-  const [roomName, setRoomName] = useState('');
-  const [roomPassword, setRoomPassword] = useState('');
-  const [myRooms, setMyRooms] = useState([]);
-  
-  // LiveKit State'leri
-  const [token, setToken] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false);
-  
-  // UI State'leri
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [shake, setShake] = useState(false);
-
-  const [verificationCode, setVerificationCode] = useState('');
-
-  useEffect(() => {
-    const savedUser = localStorage.getItem('savedUsername');
-    if (savedUser) {
-      fetchMyRooms(savedUser);
-      setAuthMode('dashboard');
-    }
-  }, []);
-
-  const fetchMyRooms = async (user) => {
-    try {
-      const res = await fetch(`/api/rooms/${user}`);
-      const data = await res.json();
-      if (data.rooms) setMyRooms(data.rooms);
-    } catch (err) {
-      console.error("Geçmiş odalar çekilemedi:", err);
-    }
-  };
-
-  const triggerError = (msg) => {
-    setError(msg);
-    setShake(true);
-    setTimeout(() => setShake(false), 500);
-  };
-
-  const handleRegister = async (e) => {
-    e.preventDefault();
-    setError(''); setLoading(true);
-    try {
-      const res = await fetch('/api/register', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, username, password })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      // Başarılı kayıt sonrası doğrulama (verify) ekranına geçiş
-      alert('Kayıt Başarılı! Lütfen e-posta adresinize gelen 6 haneli kodu giriniz.');
-      setAuthMode('verify');
-      setPassword(''); // Güvenlik için şifreyi bellekten siliyoruz
-    } catch (err) { triggerError(err.message); }
-    setLoading(false);
-  };
-
-  // E-posta doğrulama kodunu backend'e iletir
-  const handleVerify = async (e) => {
-    e.preventDefault();
-    setError(''); setLoading(true);
-    try {
-      const res = await fetch('/api/verify-email', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, code: verificationCode })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      alert('E-posta başarıyla doğrulandı! Şimdi giriş yapabilirsiniz.');
-      setAuthMode('login');
-      setVerificationCode('');
-    } catch (err) { triggerError(err.message); }
-    setLoading(false);
-  };
-
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setError(''); setLoading(true);
-    try {
-      const res = await fetch('/api/login', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      
-      localStorage.setItem('savedUsername', data.username);
-      fetchMyRooms(data.username);
-      setAuthMode('dashboard');
-      setPassword('');
-    } catch (err) { triggerError(err.message); }
-    setLoading(false);
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('savedUsername');
-    setUsername(''); setPassword(''); setMyRooms([]);
+    setUsername(''); 
+    setPassword(''); 
+    setMyRooms([]);
     setAuthMode('login');
   };
 
@@ -268,10 +150,25 @@ export default function App() {
   // 🔴 ODA İÇİ GÖRÜNÜM 🔴
   if (authMode === 'room' && token) {
     return (
-      <LiveKitRoom adaptiveStream: audio="{{" autoGainControl: dynacast: echoCancellation: false, noiseSuppression: onDisconnected="{()" options="{{" serverUrl="{LIVEKIT_URL}" token="{token}" true true, video="{false}" }}> { setToken(''); setAuthMode(localStorage.getItem('savedUsername') ? 'dashboard' : 'login'); }}
+      <LiveKitRoom
+        serverUrl={LIVEKIT_URL}
+        token={token}
+        audio={true}
+        video={false}
+        onDisconnected={() => {
+          setToken('');
+          setAuthMode(localStorage.getItem('savedUsername') ? 'dashboard' : 'login');
+        }}
         data-lk-theme="default"
       >
-        <AudioRoom isAdmin="{isAdmin}" onLeave="{()" roomName="{roomName}"> { setToken(''); setAuthMode(localStorage.getItem('savedUsername') ? 'dashboard' : 'login'); }} />
+        <AudioRoom
+          roomName={roomName}
+          isAdmin={isAdmin}
+          onLeave={() => {
+            setToken('');
+            setAuthMode(localStorage.getItem('savedUsername') ? 'dashboard' : 'login');
+          }}
+        />
       </LiveKitRoom>
     );
   }
@@ -316,7 +213,7 @@ export default function App() {
               <div className="premium-form-group">
                 <label>ODA ŞİFRESİ</label>
                 <div className="password-wrapper">
-                  <input type={showPassword ? "text" : "password"} value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} placeholder="Gizli Şifre (İsteğe bağlı)" />
+                  <input type={showPassword ? "text" : "password"} value={roomPassword} onChange={(e) => setShowPassword(e.target.value)} placeholder="Gizli Şifre (İsteğe bağlı)" />
                   <button type="button" className="eye-btn" onClick={() => setShowPassword(!showPassword)}>
                     {showPassword ? '🙈' : '👁️'}
                   </button>
@@ -457,6 +354,6 @@ export default function App() {
           )}
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 }
