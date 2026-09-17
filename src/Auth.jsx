@@ -37,7 +37,6 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
     finally { setLoading(false); }
   };
 
-  // Yeni Firebase Link Tekrar Gönderme Sistemi
   const handleResendLink = async () => {
     if (!password) {
       return alert("Güvenlik nedeniyle şifrenizi girmeniz gerekmektedir.");
@@ -104,7 +103,6 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
     finally { setLoading(false); }
   };
 
-  // 🟠 DOĞRULAMA BEKLEME EKRANI (Yeni Tasarım)
   if (authMode === 'verify') {
     return (
       <div className="premium-auth-wrapper">
@@ -139,7 +137,6 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
     );
   }
 
-  // 🔵 GİRİŞ / KAYIT / MİSAFİR EKRANI
   return (
     <div className="premium-auth-wrapper">
       <div className={`premium-auth-card ${shake ? 'shake' : ''}`}>

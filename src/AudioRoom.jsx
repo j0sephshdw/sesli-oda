@@ -8,7 +8,6 @@ import { Track, RoomEvent, ConnectionState } from 'livekit-client';
 import { KrispNoiseFilter, isKrispNoiseFilterSupported } from '@livekit/krisp-noise-filter';
 import { BackgroundBlur } from '@livekit/track-processors';
 
-// Yeni Bileşenleri İçeri Aktar
 import RoomChat from './RoomChat';
 import RoomControls from './RoomControls';
 

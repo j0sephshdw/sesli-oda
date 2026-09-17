@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { LiveKitRoom } from '@livekit/components-react';
 import AudioRoom from './AudioRoom';
-import Auth from './Auth';           // YOL DÜZELTİLDİ: Doğrudan src klasöründen çekiliyor
-import Dashboard from './Dashboard'; // YOL DÜZELTİLDİ: Doğrudan src klasöründen çekiliyor
+import Auth from './Auth';
+import Dashboard from './Dashboard';
 import '@livekit/components-styles';
 import './index.css';
 
@@ -17,7 +17,6 @@ export default function App() {
   const [token, setToken] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // Kullanıcı adı değiştikçe geçmiş odalarını getir
   useEffect(() => {
     if (username && authMode === 'dashboard') {
       fetch(`/api/rooms/${username}`)
@@ -27,7 +26,6 @@ export default function App() {
     }
   }, [username, authMode]);
 
-  // Başlangıçta giriş yapmış kullanıcı varsa Dashboard'a at
   useEffect(() => {
     if (localStorage.getItem('savedUsername')) {
       setAuthMode('dashboard');
@@ -47,7 +45,6 @@ export default function App() {
     setAuthMode(localStorage.getItem('savedUsername') ? 'dashboard' : 'login');
   };
 
-  // ODA İÇİ GÖRÜNÜM
   if (authMode === 'room' && token) {
     return (
       <LiveKitRoom
@@ -67,7 +64,6 @@ export default function App() {
     );
   }
 
-  // DASHBOARD GÖRÜNÜMÜ
   if (authMode === 'dashboard') {
     return (
       <Dashboard 
@@ -84,7 +80,6 @@ export default function App() {
     );
   }
 
-  // GİRİŞ & KAYIT GÖRÜNÜMÜ
   return (
     <Auth 
       initialMode={authMode}
@@ -94,7 +89,7 @@ export default function App() {
         setAuthMode('dashboard');
       }}
       onGuestSuccess={(rName, rToken, rAdmin, guestName) => {
-        setUsername(guestName); // Misafir ismi sadece bu oturum için
+        setUsername(guestName);
         setRoomName(rName);
         setToken(rToken);
         setIsAdmin(rAdmin);

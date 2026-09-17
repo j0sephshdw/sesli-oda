@@ -71,6 +71,8 @@ app.post('/api/register', async (req, res) => {
       rooms: []
     });
 
+    if (!FIREBASE_WEB_API_KEY) throw new Error("Sunucu yapılandırma hatası (API Key Eksik).");
+
     // Firebase üzerinden onay maili tetikle
     const loginRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, {
       method: 'POST',
@@ -107,6 +109,7 @@ app.post('/api/register', async (req, res) => {
 app.post('/api/resend-code', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Şifrenizi girmelisiniz.' });
+  if (!FIREBASE_WEB_API_KEY) return res.status(500).json({ error: 'Sunucu yapılandırma hatası (API Key Eksik).' });
 
   try {
     const loginRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, {
@@ -156,10 +159,10 @@ app.post('/api/login', async (req, res) => {
       username = userDocData.username;
     } else {
       const userSnap = await db.collection('users').where('email', '==', email).limit(1).get();
-      if (!userSnap.empty) {
-        userDocData = userSnap.docs[0].data();
-        username = userDocData.username;
-      }
+      if (userSnap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+      
+      userDocData = userSnap.docs[0].data();
+      username = userDocData.username;
     }
 
     if (!FIREBASE_WEB_API_KEY) return res.status(500).json({ error: 'Sunucu yapılandırma hatası (API Key Eksik).' });
@@ -176,7 +179,7 @@ app.post('/api/login', async (req, res) => {
     const loginData = await loginRes.json();
     if (!loginRes.ok) return res.status(401).json({ error: 'Hatalı şifre veya e-posta!' });
 
-    // 🔴 KRİTİK KONTROL: Kullanıcı mailindeki linke tıkladı mı? (Firebase'den anlık kontrol)
+    // 🔴 KRİTİK KONTROL: Kullanıcı mailindeki linke tıkladı mı?
     const userInfoRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${FIREBASE_WEB_API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -256,12 +259,13 @@ app.post('/api/token', async (req, res) => {
       if (roomData.creator === participantName) isAdmin = true;
     }
 
+    // ODA GEÇMİŞİNİ KAYDETME KISMINDAKİ HATA DÜZELTİLDİ
     if (!isGuest) {
       const userSnap = await db.collection('users').where('username', '==', participantName).limit(1).get();
       if (!userSnap.empty) {
         let rooms = userSnap.docs[0].data().rooms || [];
         if (!rooms.includes(roomName)) {
-           rooms.push(rooms);
+           rooms.push(roomName); // <-- HATA BURADAYDI (rooms.push(rooms) yazıyordu)
            if (rooms.length > 10) rooms.shift();
            await userSnap.docs[0].ref.update({ rooms });
         }
