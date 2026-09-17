@@ -3,36 +3,33 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { AccessToken } from 'livekit-server-sdk';
 import admin from 'firebase-admin';
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// ES Modules için __dirname ayarı
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
-// 1. Firebase Admin Başlatma (Güvenli ve Canlı Ortam Uyumlu)
-let serviceAccount;
+// 1. Firebase Admin Başlatma (Render Secret Files & Lokal Uyumlu)
 try {
-  // Canlı ortamda (Render) Environment Variable üzerinden okumayı dener
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-  } else {
-    // Lokal geliştirme ortamında dosyadan okur
-    serviceAccount = JSON.parse(
-      readFileSync(new URL('./serviceAccountKey.json', import.meta.url))
-    );
-  }
-} catch (error) {
-  console.error("KRİTİK HATA: Firebase Service Account bilgileri okunamadı!", error);
-}
+  const renderSecretPath = '/etc/secrets/serviceAccountKey.json';
+  let serviceAccount;
 
-if (serviceAccount) {
+  if (existsSync(renderSecretPath)) {
+    // Render üzerindeki Secret File dizininden oku
+    serviceAccount = JSON.parse(readFileSync(renderSecretPath, 'utf8'));
+  } else {
+    // Lokal geliştirme ortamından oku
+    serviceAccount = JSON.parse(readFileSync(new URL('./serviceAccountKey.json', import.meta.url), 'utf8'));
+  }
+  
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
   });
+} catch (error) {
+  console.error("KRİTİK HATA: Firebase Service Account dosyası okunamadı!", error);
 }
 
 const auth = admin.auth();
@@ -47,7 +44,7 @@ const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET;
 const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY;
 
 // ==========================================
-// API ROUTE'LARI (Önceki işlevlerin aynısı)
+// API ROUTE'LARI
 // ==========================================
 
 app.post('/api/register', async (req, res) => {
@@ -95,7 +92,7 @@ app.post('/api/login', async (req, res) => {
        if(!userSnap.empty) username = userSnap.docs[0].data().username;
     }
 
-    if (!FIREBASE_WEB_API_KEY) return res.status(500).json({ error: 'Sunucu yapılandırma hatası.' });
+    if (!FIREBASE_WEB_API_KEY) return res.status(500).json({ error: 'Sunucu yapılandırma hatası (API Key Eksik).' });
 
     const verifyRes = await fetch(
       `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`,
@@ -196,7 +193,7 @@ app.post('/api/chat', async (req, res) => {
 });
 
 // ==========================================
-// REACT FRONTEND SUNUCUSU (YENİ EKLENDİ)
+// REACT FRONTEND SUNUCUSU
 // ==========================================
 
 // Vite tarafından derlenen 'dist' klasörünü statik olarak sunar
@@ -204,11 +201,9 @@ app.use(express.static(path.join(__dirname, 'dist')));
 
 // Kalan tüm istekleri (React Router) index.html'e yönlendirir
 app.get('*', (req, res) => {
-  // Eğer /api ile başlayan ama bulunamayan bir istek varsa 404 dön
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ error: 'API endpoint bulunamadı.' });
   }
-  // Diğer her şey için React uygulamasını yükle
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
