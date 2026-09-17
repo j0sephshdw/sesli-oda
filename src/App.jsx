@@ -213,7 +213,7 @@ export default function App() {
               <div className="premium-form-group">
                 <label>ODA ŞİFRESİ</label>
                 <div className="password-wrapper">
-                  <input type={showPassword ? "text" : "password"} value={roomPassword} onChange={(e) => setShowPassword(e.target.value)} placeholder="Gizli Şifre (İsteğe bağlı)" />
+                  <input type={showPassword ? "text" : "password"} value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} placeholder="Gizli Şifre (İsteğe bağlı)" />
                   <button type="button" className="eye-btn" onClick={() => setShowPassword(!showPassword)}>
                     {showPassword ? '🙈' : '👁️'}
                   </button>
@@ -354,6 +354,6 @@ export default function App() {
           )}
         </div>
       </div>
-    );
-  }
+    </div>
+  );
 }
