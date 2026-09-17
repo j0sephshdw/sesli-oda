@@ -170,7 +170,6 @@ app.delete('/api/delete-account', async (req, res) => {
 // SOSYAL AĞ & PROFİL ROUTE'LARI
 // ==========================================
 
-// 🟡 YENİ: Arkadaşım Nerede? (Rich Presence Durum Güncellemesi)
 app.post('/api/users/:username/status', async (req, res) => {
   const { currentRoom } = req.body;
   try {
@@ -185,6 +184,7 @@ app.post('/api/users/:username/status', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 🔴 KRİTİK: Null Guard ve Koruma Eklenmiş Profil API
 app.get('/api/users/:username/profile', async (req, res) => {
   try {
     const snap = await db.collection('users').where('username', '==', req.params.username).limit(1).get();
@@ -196,42 +196,51 @@ app.get('/api/users/:username/profile', async (req, res) => {
     await userRef.update({ lastActive: FieldValue.serverTimestamp() });
 
     let friendsDetail = [];
-    const friendUsernames = data.friends || [];
+    const friendUsernames = Array.isArray(data.friends) ? data.friends : [];
 
     if (friendUsernames.length > 0) {
-       const friendPromises = friendUsernames.map(f => db.collection('users').where('username', '==', f).limit(1).get());
-       const friendSnaps = await Promise.all(friendPromises);
-       
-       friendsDetail = friendSnaps.map(fSnap => {
-          if (fSnap.empty) return null;
-          const fd = fSnap.docs[0].data();
-          let isOnline = false;
-          if (fd.lastActive && typeof fd.lastActive.toDate === 'function') {
-             isOnline = (Date.now() - fd.lastActive.toDate().getTime()) < 120000;
-          }
-          return { 
-            username: fd.username, 
-            bio: fd.bio || '', 
-            color: fd.color || '#5865F2', 
-            isOnline,
-            customStatus: fd.customStatus || '', // 🟡 EKLENDİ
-            currentRoom: fd.currentRoom || null  // 🟡 EKLENDİ
-          };
-       }).filter(Boolean);
+       // Tek tek sorgu atmak yerine 'in' operatörü ile veritabanı yükünü 10 kat hafiflettik
+       // Firestore 'in' sorgusu max 10 eleman alır, bunu yığınlara bölebiliriz:
+       const chunkedFriends = [];
+       for (let i = 0; i < friendUsernames.length; i += 10) {
+           chunkedFriends.push(friendUsernames.slice(i, i + 10));
+       }
+
+       for (const chunk of chunkedFriends) {
+           const friendSnaps = await db.collection('users').where('username', 'in', chunk).get();
+           friendSnaps.docs.forEach(fSnap => {
+              const fd = fSnap.data();
+              let isOnline = false;
+              if (fd.lastActive && typeof fd.lastActive.toDate === 'function') {
+                 isOnline = (Date.now() - fd.lastActive.toDate().getTime()) < 120000;
+              }
+              friendsDetail.push({ 
+                username: fd.username, 
+                bio: fd.bio || '', 
+                color: fd.color || '#5865F2', 
+                isOnline,
+                customStatus: fd.customStatus || '',
+                currentRoom: fd.currentRoom || null
+              });
+           });
+       }
     }
 
     res.json({
-      rooms: data.rooms || [],
+      rooms: Array.isArray(data.rooms) ? data.rooms : [],
       friendsList: friendUsernames,
       friendsDetail: friendsDetail,
-      friendRequests: data.friendRequests || [],
-      sentRequests: data.sentRequests || [],
-      unreadDMs: data.unreadDMs || {}, 
+      friendRequests: Array.isArray(data.friendRequests) ? data.friendRequests : [],
+      sentRequests: Array.isArray(data.sentRequests) ? data.sentRequests : [],
+      unreadDMs: typeof data.unreadDMs === 'object' && data.unreadDMs !== null ? data.unreadDMs : {}, 
       bio: data.bio || '',
       color: data.color || '#5865F2',
       customStatus: data.customStatus || ''
     });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+      console.error("Profil Çekme Hatası:", err);
+      res.status(500).json({ error: 'Profil verisi çekilemedi.' }); 
+  }
 });
 
 app.put('/api/users/:username/profile', async (req, res) => {
@@ -241,7 +250,7 @@ app.put('/api/users/:username/profile', async (req, res) => {
     if (snap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
     
     const updateData = { 
-      bio: bio.substring(0, 100), 
+      bio: bio ? String(bio).substring(0, 100) : '', 
       color: color || '#5865F2' 
     };
     if (customStatus !== undefined) updateData.customStatus = customStatus;
@@ -255,9 +264,17 @@ app.get('/api/users/search', async (req, res) => {
   const { q, currentUsername } = req.query;
   if (!q) return res.json({ users: [] });
   try {
-    const snapshot = await db.collection('users').where('username', '>=', q).where('username', '<=', q + '\uf8ff').limit(10).get();
+    // Arama rotasını güvenli hale getirdik
+    const snapshot = await db.collection('users')
+      .where('username', '>=', q)
+      .where('username', '<=', q + '\uf8ff')
+      .limit(15).get();
+      
     res.json({ users: snapshot.docs.map(d => d.data().username).filter(n => n !== currentUsername) });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+      console.error("Arama Hatası:", err);
+      res.status(500).json({ error: 'Arama yapılırken sunucuda hata oluştu.' }); 
+  }
 });
 
 app.post('/api/friends/add', async (req, res) => {
@@ -265,11 +282,13 @@ app.post('/api/friends/add', async (req, res) => {
   try {
     const sSnap = await db.collection('users').where('username', '==', sender).limit(1).get();
     const tSnap = await db.collection('users').where('username', '==', target).limit(1).get();
-    if (sSnap.empty || tSnap.empty) return res.status(404).json({ error: 'Bulunamadı.' });
+    if (sSnap.empty || tSnap.empty) return res.status(404).json({ error: 'Kullanıcı Bulunamadı.' });
     
     await db.runTransaction(async (t) => {
       const sDoc = await t.get(sSnap.docs[0].ref);
-      if ((sDoc.data().friends || []).includes(target)) throw new Error('Zaten arkadaşsınız.');
+      const friendsList = sDoc.data().friends || [];
+      if (friendsList.includes(target)) throw new Error('Zaten arkadaşsınız.');
+      
       t.update(sSnap.docs[0].ref, { sentRequests: FieldValue.arrayUnion(target) });
       t.update(tSnap.docs[0].ref, { friendRequests: FieldValue.arrayUnion(sender) });
     });
@@ -300,7 +319,6 @@ app.post('/api/friends/respond', async (req, res) => {
 // LIVEKIT VE ODA ROUTE'LARI
 // ==========================================
 
-// 🟢 KRİTİK DÜZELTME: Kaybolan "Geçmiş Odalarım" Rotası Geri Getirildi!
 app.get('/api/rooms/:username', async (req, res) => {
   try {
     const snap = await db.collection('users').where('username', '==', req.params.username).limit(1).get();

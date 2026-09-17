@@ -2504,3 +2504,43 @@ body {
         background: #5865f2;
         color: white;
     }
+/* ==========================================================================
+   29. CONTEXT MENU (Sağ Tık Menüsü)
+   ========================================================================== */
+.context-menu {
+    position: absolute;
+    background: #111214;
+    border: 1px solid #3f4147;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.8);
+    border-radius: 8px;
+    padding: 8px 0;
+    list-style: none;
+    z-index: 1000000;
+    animation: popInMenu 0.15s ease-out;
+}
+
+    .context-menu li {
+        padding: 8px 20px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        color: #c9cdfb;
+        transition: 0.1s;
+    }
+
+        .context-menu li:hover {
+            background: #5865f2;
+            color: white;
+        }
+
+@keyframes popInMenu {
+    0% {
+        transform: scale(0.9);
+        opacity: 0;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
