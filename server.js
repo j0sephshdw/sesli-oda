@@ -36,7 +36,6 @@ try {
   else throw new Error("serviceAccountKey.json dosyası bulunamadı!");
   
   firebaseApp = initializeApp({ credential: cert(serviceAccount) });
-  console.log("Firebase Admin başarıyla başlatıldı.");
 } catch (error) {
   console.error("KRİTİK HATA: Firebase bağlantısı kurulamadı!", error.message);
   process.exit(1);
@@ -54,7 +53,7 @@ const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET;
 const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY;
 
 // ==========================================
-// KİMLİK DOĞRULAMA ROUTE'LARI
+// KİMLİK DOĞRULAMA & PROFİL ROUTE'LARI
 // ==========================================
 
 app.post('/api/register', async (req, res) => {
@@ -69,12 +68,10 @@ app.post('/api/register', async (req, res) => {
 
     await db.collection('users').doc(userRecord.uid).set({
       uid: userRecord.uid, email, username, createdAt: FieldValue.serverTimestamp(), 
-      lastActive: FieldValue.serverTimestamp(), // Yeni: Son görülme
-      rooms: [], friends: [], friendRequests: [], sentRequests: [],
+      lastActive: FieldValue.serverTimestamp(),
+      rooms: [], friends: [], friendRequests: [], sentRequests: [], unreadDMs: {}, // 🟡 YENİ: Okunmamış mesaj haritası
       bio: 'Merhaba! Ben Sesli Oda kullanıyorum.', color: '#5865F2'
     });
-
-    if (!FIREBASE_WEB_API_KEY) throw new Error("Sunucu yapılandırma hatası (API Key Eksik).");
 
     const loginRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -83,11 +80,10 @@ app.post('/api/register', async (req, res) => {
     const loginData = await loginRes.json();
     if (!loginRes.ok) throw new Error(loginData.error?.message || "Doğrulama token'ı alınamadı.");
 
-    const oobRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`, {
+    await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ requestType: "VERIFY_EMAIL", idToken: loginData.idToken }),
     });
-    if (!oobRes.ok) throw new Error("Onay maili gönderilemedi.");
 
     res.json({ success: true, message: 'Kayıt başarılı! Lütfen gelen kutunuzdaki onay linkine tıklayın.' });
   } catch (err) { res.status(400).json({ error: translateFirebaseError(err.message) }); }
@@ -95,21 +91,17 @@ app.post('/api/register', async (req, res) => {
 
 app.post('/api/login', async (req, res) => {
   const { username: identifier, password } = req.body;
-  if (!identifier || !password) return res.status(400).json({ error: 'Bilgiler eksik.' });
-
   try {
-    let email = identifier; let username = identifier; let userDocData = null; let userRef = null;
+    let email = identifier; let username = identifier; let userRef = null;
 
     if (!identifier.includes('@')) {
       const userSnap = await db.collection('users').where('username', '==', identifier).limit(1).get();
       if (userSnap.empty) return res.status(404).json({ error: 'Bu kullanıcı adıyla kayıtlı bir hesap bulunamadı.' });
-      userDocData = userSnap.docs[0].data(); email = userDocData.email; username = userDocData.username;
-      userRef = userSnap.docs[0].ref;
+      email = userSnap.docs[0].data().email; username = userSnap.docs[0].data().username; userRef = userSnap.docs[0].ref;
     } else {
       const userSnap = await db.collection('users').where('email', '==', email).limit(1).get();
       if (userSnap.empty) return res.status(404).json({ error: 'Bu e-posta ile kayıtlı bir hesap bulunamadı.' });
-      userDocData = userSnap.docs[0].data(); username = userDocData.username;
-      userRef = userSnap.docs[0].ref;
+      username = userSnap.docs[0].data().username; userRef = userSnap.docs[0].ref;
     }
 
     const loginRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, {
@@ -125,15 +117,11 @@ app.post('/api/login', async (req, res) => {
     });
     const userInfoData = await userInfoRes.json();
 
-    if (!userInfoData.users[0].emailVerified) {
-      return res.status(403).json({ error: 'Hesabınız onaylanmamış. Lütfen linke tıklayın.', needsVerification: true, email: email });
-    }
+    if (!userInfoData.users[0].emailVerified) return res.status(403).json({ error: 'Hesabınız onaylanmamış. Lütfen linke tıklayın.', needsVerification: true, email: email });
 
-    // Başarılı girişte anında "Aktif" işaretle
     await userRef.update({ lastActive: FieldValue.serverTimestamp() });
-
     res.json({ success: true, username: username });
-  } catch (err) { res.status(500).json({ error: 'Giriş işlemi başarısız: ' + translateFirebaseError(err.message) }); }
+  } catch (err) { res.status(500).json({ error: translateFirebaseError(err.message) }); }
 });
 
 app.post('/api/resend-code', async (req, res) => {
@@ -170,19 +158,14 @@ app.delete('/api/delete-account', async (req, res) => {
   try {
     const userSnap = await db.collection('users').where('username', '==', username).limit(1).get();
     if (userSnap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
-    const userDoc = userSnap.docs[0]; const userData = userDoc.data();
+    const userData = userSnap.docs[0].data();
 
     if (userData.uid) { try { await auth.deleteUser(userData.uid); } catch (e) {} }
-    await userDoc.ref.delete();
+    await userSnap.docs[0].ref.delete();
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ==========================================
-// SOSYAL AĞ & PROFİL ROUTE'LARI
-// ==========================================
-
-// 🟡 YENİ: Zenginleştirilmiş Profil ve Arkadaş (Online Status) Getirme
 app.get('/api/users/:username/profile', async (req, res) => {
   try {
     const snap = await db.collection('users').where('username', '==', req.params.username).limit(1).get();
@@ -191,35 +174,23 @@ app.get('/api/users/:username/profile', async (req, res) => {
     const userRef = snap.docs[0].ref;
     const data = snap.docs[0].data();
 
-    // Kullanıcı bu isteği attığında "Buradayım" (Heartbeat) demiş olur
     await userRef.update({ lastActive: FieldValue.serverTimestamp() });
 
-    // Arkadaşların Online Durumu, Biyografisi ve Rengini Çek
     let friendsDetail = [];
     const friendUsernames = data.friends || [];
 
     if (friendUsernames.length > 0) {
-       // Tüm arkadaşların detaylarını asenkron olarak Firestore'dan al
        const friendPromises = friendUsernames.map(f => db.collection('users').where('username', '==', f).limit(1).get());
        const friendSnaps = await Promise.all(friendPromises);
        
        friendsDetail = friendSnaps.map(fSnap => {
           if (fSnap.empty) return null;
           const fd = fSnap.docs[0].data();
-          
           let isOnline = false;
           if (fd.lastActive && typeof fd.lastActive.toDate === 'function') {
-             // Son 2 dakika içinde istek attıysa ONLINE (Yeşil Nokta)
-             const diff = Date.now() - fd.lastActive.toDate().getTime();
-             isOnline = diff < 120000;
+             isOnline = (Date.now() - fd.lastActive.toDate().getTime()) < 120000;
           }
-
-          return { 
-            username: fd.username, 
-            bio: fd.bio || 'Sesli Oda kullanıcısı', 
-            color: fd.color || '#5865F2', 
-            isOnline 
-          };
+          return { username: fd.username, bio: fd.bio || '', color: fd.color || '#5865F2', isOnline };
        }).filter(Boolean);
     }
 
@@ -229,25 +200,20 @@ app.get('/api/users/:username/profile', async (req, res) => {
       friendsDetail: friendsDetail,
       friendRequests: data.friendRequests || [],
       sentRequests: data.sentRequests || [],
+      unreadDMs: data.unreadDMs || {}, // 🟡 YENİ: Okunmamış mesaj verisi Frontend'e gidiyor
       bio: data.bio || '',
       color: data.color || '#5865F2'
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// 🟡 YENİ: Biyografi ve Profil Rengi Güncelleme
 app.put('/api/users/:username/profile', async (req, res) => {
   const { bio, color } = req.body;
   try {
     const snap = await db.collection('users').where('username', '==', req.params.username).limit(1).get();
     if (snap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
-    
-    await snap.docs[0].ref.update({ 
-      bio: bio.substring(0, 100), // Max 100 karakter
-      color: color || '#5865F2' 
-    });
-    
-    res.json({ success: true, message: 'Profil başarıyla güncellendi!' });
+    await snap.docs[0].ref.update({ bio: bio.substring(0, 100), color: color || '#5865F2' });
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -255,66 +221,46 @@ app.get('/api/users/search', async (req, res) => {
   const { q, currentUsername } = req.query;
   if (!q) return res.json({ users: [] });
   try {
-    const snapshot = await db.collection('users')
-      .where('username', '>=', q).where('username', '<=', q + '\uf8ff')
-      .limit(10).get();
-      
-    const users = snapshot.docs.map(doc => doc.data().username).filter(name => name !== currentUsername);
-    res.json({ users });
+    const snapshot = await db.collection('users').where('username', '>=', q).where('username', '<=', q + '\uf8ff').limit(10).get();
+    res.json({ users: snapshot.docs.map(d => d.data().username).filter(n => n !== currentUsername) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/friends/add', async (req, res) => {
   const { sender, target } = req.body;
   try {
-    const senderSnap = await db.collection('users').where('username', '==', sender).limit(1).get();
-    const targetSnap = await db.collection('users').where('username', '==', target).limit(1).get();
+    const sSnap = await db.collection('users').where('username', '==', sender).limit(1).get();
+    const tSnap = await db.collection('users').where('username', '==', target).limit(1).get();
+    if (sSnap.empty || tSnap.empty) return res.status(404).json({ error: 'Bulunamadı.' });
     
-    if (senderSnap.empty || targetSnap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
-    
-    const senderRef = senderSnap.docs[0].ref;
-    const targetRef = targetSnap.docs[0].ref;
-
     await db.runTransaction(async (t) => {
-      const senderDoc = await t.get(senderRef); const targetDoc = await t.get(targetRef);
-      const senderData = senderDoc.data();
-
-      if ((senderData.friends || []).includes(target)) throw new Error('Bu kişiyle zaten arkadaşsınız.');
-      if ((senderData.sentRequests || []).includes(target)) throw new Error('İstek zaten gönderilmiş.');
-      
-      t.update(senderRef, { sentRequests: FieldValue.arrayUnion(target) });
-      t.update(targetRef, { friendRequests: FieldValue.arrayUnion(sender) });
+      const sDoc = await t.get(sSnap.docs[0].ref);
+      if ((sDoc.data().friends || []).includes(target)) throw new Error('Zaten arkadaşsınız.');
+      t.update(sSnap.docs[0].ref, { sentRequests: FieldValue.arrayUnion(target) });
+      t.update(tSnap.docs[0].ref, { friendRequests: FieldValue.arrayUnion(sender) });
     });
-
-    res.json({ success: true, message: 'Arkadaşlık isteği gönderildi.' });
+    res.json({ success: true });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
 app.post('/api/friends/respond', async (req, res) => {
   const { user, target, action } = req.body;
   try {
-    const userSnap = await db.collection('users').where('username', '==', user).limit(1).get();
-    const targetSnap = await db.collection('users').where('username', '==', target).limit(1).get();
+    const uSnap = await db.collection('users').where('username', '==', user).limit(1).get();
+    const tSnap = await db.collection('users').where('username', '==', target).limit(1).get();
     
-    if (userSnap.empty || targetSnap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
-    
-    const userRef = userSnap.docs[0].ref;
-    const targetRef = targetSnap.docs[0].ref;
-
     await db.runTransaction(async (t) => {
       if (action === 'accept') {
-        t.update(userRef, { friends: FieldValue.arrayUnion(target), friendRequests: FieldValue.arrayRemove(target) });
-        t.update(targetRef, { friends: FieldValue.arrayUnion(user), sentRequests: FieldValue.arrayRemove(user) });
+        t.update(uSnap.docs[0].ref, { friends: FieldValue.arrayUnion(target), friendRequests: FieldValue.arrayRemove(target) });
+        t.update(tSnap.docs[0].ref, { friends: FieldValue.arrayUnion(user), sentRequests: FieldValue.arrayRemove(user) });
       } else {
-        t.update(userRef, { friendRequests: FieldValue.arrayRemove(target) });
-        t.update(targetRef, { sentRequests: FieldValue.arrayRemove(user) });
+        t.update(uSnap.docs[0].ref, { friendRequests: FieldValue.arrayRemove(target) });
+        t.update(tSnap.docs[0].ref, { sentRequests: FieldValue.arrayRemove(user) });
       }
     });
-
     res.json({ success: true });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
-
 
 // ==========================================
 // LIVEKIT VE ODA ROUTE'LARI
@@ -344,9 +290,39 @@ app.post('/api/token', async (req, res) => {
       }
     }
 
+    // 🟡 YENİ: DM Odasına girildiğinde okunmamış mesajları sıfırla (Okundu İşareti)
+    if (roomName.startsWith('DM_')) {
+      const friendName = roomName.replace('DM_', '').split('-').find(u => u !== participantName);
+      const userSnap = await db.collection('users').where('username', '==', participantName).limit(1).get();
+      if (!userSnap.empty && friendName) {
+         await userSnap.docs[0].ref.set({ unreadDMs: { [friendName]: 0 } }, { merge: true });
+      }
+    }
+
     const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity: `${participantName}_${Date.now()}`, name: participantName });
     at.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
     res.json({ token: await at.toJwt(), isAdmin });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/chat', async (req, res) => {
+  let { roomName, sender, message, timestamp } = req.body;
+  if (!message || message.trim() === '') return res.status(400).json({ error: 'Boş mesaj gönderilemez.' });
+  if (message.length > 500) message = message.substring(0, 500) + '...';
+  try {
+    await db.collection('rooms').doc(roomName).collection('messages').add({ sender, message, timestamp });
+
+    // 🟡 YENİ: DM odasına atılan mesaj, hedef kişinin "Okunmamış" sayacını artırır
+    if (roomName.startsWith('DM_')) {
+      const targetUser = roomName.replace('DM_', '').split('-').find(u => u !== sender);
+      if (targetUser) {
+        const targetSnap = await db.collection('users').where('username', '==', targetUser).limit(1).get();
+        if (!targetSnap.empty) {
+           await targetSnap.docs[0].ref.set({ unreadDMs: { [sender]: FieldValue.increment(1) } }, { merge: true });
+        }
+      }
+    }
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -357,21 +333,8 @@ app.get('/api/chat/:roomName', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/api/chat', async (req, res) => {
-  let { roomName, sender, message, timestamp } = req.body;
-  if (!message || message.trim() === '') return res.status(400).json({ error: 'Boş mesaj gönderilemez.' });
-  if (message.length > 500) message = message.substring(0, 500) + '...';
-  try {
-    await db.collection('rooms').doc(roomName).collection('messages').add({ sender, message, timestamp });
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
 app.use(express.static(path.join(__dirname, 'dist')));
-app.get('*', (req, res) => {
-  if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'API endpoint bulunamadı.' });
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-});
+app.get('*', (req, res) => { res.sendFile(path.join(__dirname, 'dist', 'index.html')); });
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`🚀 Sunucu ${PORT} portunda çalışıyor.`));
