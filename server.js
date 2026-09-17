@@ -2,7 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { AccessToken } from 'livekit-server-sdk';
-import firebaseAdmin from 'firebase-admin';
+import { initializeApp, cert } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { readFileSync, existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -10,12 +12,10 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ES Module ortamında Firebase Admin uyumluluk köprüsü
-const admin = firebaseAdmin.default || firebaseAdmin;
-
 dotenv.config();
 
 // 1. Firebase Admin Başlatma (Render Secret Files & Lokal Uyumlu)
+let firebaseApp;
 try {
   const renderSecretPath = '/etc/secrets/serviceAccountKey.json';
   const localSecretPath = path.join(__dirname, 'serviceAccountKey.json');
@@ -31,17 +31,17 @@ try {
     throw new Error("serviceAccountKey.json dosyası hiçbir konumda bulunamadı!");
   }
   
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
+  firebaseApp = initializeApp({
+    credential: cert(serviceAccount)
   });
   console.log("Firebase Admin başarıyla başlatıldı.");
 } catch (error) {
   console.error("KRİTİK HATA: Firebase bağlantısı kurulamadı!", error.message);
-  process.exit(1); 
+  process.exit(1);
 }
 
-const auth = admin.auth();
-const db = admin.firestore();
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
 const app = express();
 
 app.use(cors());
@@ -72,7 +72,7 @@ app.post('/api/register', async (req, res) => {
       uid: userRecord.uid,
       email,
       username,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
       rooms: []
     });
 
@@ -139,7 +139,7 @@ app.post('/api/token', async (req, res) => {
     let isAdmin = false;
 
     if (!roomSnap.exists) {
-      await roomRef.set({ name: roomName, creator: participantName, password: password || '', createdAt: admin.firestore.FieldValue.serverTimestamp() });
+      await roomRef.set({ name: roomName, creator: participantName, password: password || '', createdAt: FieldValue.serverTimestamp() });
       isAdmin = true;
     } else {
       const roomData = roomSnap.data();
@@ -204,10 +204,8 @@ app.post('/api/chat', async (req, res) => {
 // REACT FRONTEND SUNUCUSU
 // ==========================================
 
-// Vite tarafından derlenen 'dist' klasörünü statik olarak sunar
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// Kalan tüm istekleri (React Router) index.html'e yönlendirir
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ error: 'API endpoint bulunamadı.' });
