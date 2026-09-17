@@ -37,7 +37,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   const [floatingEmojis, setFloatingEmojis] = useState([]);
   
   const [isChatVisible, setIsChatVisible] = useState(true);
-  const [unreadCount, setUnreadCount] = useState(0); // YENİ: Okunmayan Mesaj Sayacı
+  const [unreadCount, setUnreadCount] = useState(0); 
   const [typing, setTyping] = useState({});
 
   const [showSettings, setShowSettings] = useState(false);
@@ -195,14 +195,34 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
     }
   };
 
-  // YENİ: Unread Badge Kontrolü
+  // 🟡 YENİ: Tarayıcı bildirim izni iste
+  useEffect(() => {
+    if (Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Unread Badge ve Masaüstü Bildirimi Kontrolü
   useEffect(() => {
     if (chatMessages.length > prevChatCount.current) {
       const lastMsg = chatMessages[chatMessages.length - 1];
+      const senderName = (lastMsg.from?.name || lastMsg.from?.identity || 'Biri').split('_')[0];
+
       if (lastMsg.from?.identity !== localParticipant?.identity) {
-        if (lastMsg.message.toLowerCase().includes(`@${myDisplayName.toLowerCase()}`)) { playTone('mention'); } else { playTone('message'); }
-        if (!isChatVisible) {
-          setUnreadCount(prev => prev + 1);
+        if (lastMsg.message.toLowerCase().includes(`@${myDisplayName.toLowerCase()}`)) { 
+            playTone('mention'); 
+        } else { 
+            playTone('message'); 
+        }
+        
+        if (!isChatVisible) setUnreadCount(prev => prev + 1);
+
+        // Sekme arka plandaysa bildirim gönder
+        if (document.hidden && Notification.permission === 'granted') {
+           new Notification(`Sesli Oda: ${senderName}`, { 
+               body: lastMsg.message,
+               icon: 'https://cdn-icons-png.flaticon.com/512/3114/3114810.png' 
+           });
         }
       }
       prevChatCount.current = chatMessages.length;
@@ -303,7 +323,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
 
   const toggleChatVisibility = () => {
     setIsChatVisible(!isChatVisible);
-    if (!isChatVisible) setUnreadCount(0); // Sohbet açılınca rozeti sıfırla
+    if (!isChatVisible) setUnreadCount(0); 
   };
 
   const activeTypers = Object.keys(typing).filter(name => name !== myDisplayName);
