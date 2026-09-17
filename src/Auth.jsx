@@ -8,7 +8,6 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
   const [password, setPassword] = useState('');
   const [roomName, setRoomName] = useState('');
   const [roomPassword, setRoomPassword] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -32,42 +31,27 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      alert('Kayıt Başarılı! Lütfen e-posta adresinize gelen 6 haneli kodu giriniz.');
+      alert('Kayıt Başarılı! Google Firebase üzerinden e-posta adresinize bir onay linki gönderildi. Lütfen mailinize gidip linke tıklayın.');
       setAuthMode('verify');
     } catch (err) { triggerError(err.message); }
     finally { setLoading(false); }
   };
 
-  const handleVerify = async (e) => {
-    e.preventDefault();
-    setError(''); setLoading(true);
-    try {
-      const res = await fetch('/api/verify-email', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, code: verificationCode })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      alert('E-posta başarıyla doğrulandı! Şimdi giriş yapabilirsiniz.');
-      setAuthMode('login');
-      setVerificationCode('');
-    } catch (err) { triggerError(err.message); }
-    finally { setLoading(false); }
-  };
-
-  // 🟡 YENİ EKLENEN FONKSİYON: Kodu Tekrar Gönder
-  const handleResendCode = async () => {
+  // Yeni Firebase Link Tekrar Gönderme Sistemi
+  const handleResendLink = async () => {
+    if (!password) {
+      return alert("Güvenlik nedeniyle şifrenizi girmeniz gerekmektedir.");
+    }
     setError(''); setLoading(true);
     try {
       const res = await fetch('/api/resend-code', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email, password })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       
-      alert('Yeni doğrulama kodu e-postanıza başarıyla gönderildi!');
+      alert('Yeni onay linki e-postanıza başarıyla gönderildi! (Gereksiz/Spam klasörünü kontrol etmeyi unutmayın)');
     } catch (err) { triggerError(err.message); }
     finally { setLoading(false); }
   };
@@ -83,11 +67,10 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
       const data = await res.json();
       
       if (!res.ok) {
-        // 🔴 KRİTİK DÜZELTME: Hesap var ama doğrulanmamışsa, otomatik olarak kod ekranına at
         if (data.needsVerification) {
           setEmail(data.email);
           setAuthMode('verify');
-          throw new Error('Hesabınız henüz doğrulanmamış. Lütfen e-postanıza gelen kodu girin.');
+          throw new Error('Hesabınız henüz onaylanmamış. Mailinizdeki linke tıklamalısınız.');
         }
         throw new Error(data.error);
       }
@@ -121,29 +104,35 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
     finally { setLoading(false); }
   };
 
-  // 🟠 DOĞRULAMA (VERIFY) EKRANI GÜNCELLEMESİ
+  // 🟠 DOĞRULAMA BEKLEME EKRANI (Yeni Tasarım)
   if (authMode === 'verify') {
     return (
       <div className="premium-auth-wrapper">
         <div className={`premium-auth-card ${shake ? 'shake' : ''}`}>
           <div className="auth-header">
-            <h2>E-posta Doğrulama</h2>
-            <p>Lütfen <b>{email}</b> adresinize gönderilen 6 haneli kodu girin.</p>
+            <h2>E-posta Doğrulaması Bekleniyor</h2>
+            <p style={{marginTop: '10px'}}><b>{email}</b> adresinize bir onay linki yolladık.</p>
           </div>
+          
           {error && <div className="auth-error">{error}</div>}
-          <form onSubmit={handleVerify}>
+          
+          <div style={{ textAlign: 'center', marginBottom: '20px', color: '#949ba4', fontSize: '14px' }}>
+            Lütfen mailinize gidin, <b>gelen linke tıklayın</b> ve ardından aşağıdaki butona basarak giriş yapın.
+          </div>
+
+          <form onSubmit={handleLogin}>
             <div className="premium-form-group">
-              <label>DOĞRULAMA KODU <span className="req">*</span></label>
-              <input type="text" value={verificationCode} onChange={(e) => setVerificationCode(e.target.value)} required placeholder="Örn: 123456" maxLength={6} />
+              <label>GÜVENLİK İÇİN ŞİFRENİZ <span className="req">*</span></label>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="Hesap şifrenizi girin" />
             </div>
-            <button type="submit" disabled={loading} className="premium-submit-btn">
-              {loading ? 'Doğrulanıyor...' : 'Doğrula'}
+            <button type="submit" disabled={loading} className="premium-submit-btn" style={{backgroundColor: '#23a55a'}}>
+              {loading ? 'Kontrol Ediliyor...' : 'Linke Tıkladım, Giriş Yap!'}
             </button>
           </form>
           
           <div className="auth-footer-links" style={{marginTop: '20px'}}>
-             <a onClick={handleResendCode} className="link-action" style={{marginBottom: '10px', color: '#57F287'}}>Kodu Tekrar Gönder</a>
-             <a onClick={() => {setAuthMode('login'); setError(''); setVerificationCode('');}} className="link-action">İptal ve Girişe Dön</a>
+             <a onClick={handleResendLink} className="link-action" style={{marginBottom: '10px', color: '#57F287'}}>Linki Tekrar Gönder</a>
+             <a onClick={() => {setAuthMode('login'); setError('');}} className="link-action">İptal ve Girişe Dön</a>
           </div>
         </div>
       </div>

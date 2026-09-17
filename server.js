@@ -28,7 +28,9 @@ try {
   } else {
     throw new Error("serviceAccountKey.json dosyası hiçbir konumda bulunamadı!");
   }
+  
   firebaseApp = initializeApp({ credential: cert(serviceAccount) });
+  console.log("Firebase Admin başarıyla başlatıldı.");
 } catch (error) {
   console.error("KRİTİK HATA: Firebase bağlantısı kurulamadı!", error.message);
   process.exit(1);
@@ -44,45 +46,6 @@ app.use(express.json());
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY;
 const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET;
 const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY;
-const RESEND_API_KEY = process.env.RESEND_API_KEY ? process.env.RESEND_API_KEY.trim() : '';
-
-// 2. Resend HTTPS E-Posta Gönderici Fonksiyonu (Port Engellerine Takılmaz)
-async function sendVerificationEmail(toEmail, username, code) {
-  if (!RESEND_API_KEY) {
-    throw new Error("Render üzerinde RESEND_API_KEY tanımlanmamış.");
-  }
-
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${RESEND_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      from: 'Sesli Oda <onboarding@resend.dev>',
-      to: [toEmail],
-      subject: 'Sesli Oda - E-posta Doğrulama Kodu',
-      html: `
-        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; background-color: #1e1f22; color: #f2f3f5; border-radius: 12px; border: 1px solid #313338;">
-          <h2 style="color: #5865F2; text-align: center; margin-bottom: 20px;">Aramıza Hoş Geldin, ${username}!</h2>
-          <p style="font-size: 15px; line-height: 1.6;">Sesli Oda hesabını doğrulamak için aşağıdaki 6 haneli güvenlik kodunu kullanabilirsin:</p>
-          <div style="background-color: #2b2d31; padding: 20px; font-size: 32px; font-weight: bold; letter-spacing: 8px; text-align: center; border-radius: 8px; margin: 30px 0; color: #ffffff; border: 1px solid #3f4147;">
-            ${code}
-          </div>
-          <p style="font-size: 13px; color: #949ba4; text-align: center; border-top: 1px solid #313338; padding-top: 20px; margin-top: 30px;">
-            Bu işlemi sen başlatmadıysan, bu e-postayı görmezden gelebilirsin.
-          </p>
-        </div>
-      `
-    })
-  });
-
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || 'Resend üzerinden mail iletilemedi.');
-  }
-  return data;
-}
 
 // ==========================================
 // API ROUTE'LARI
@@ -95,95 +58,77 @@ app.post('/api/register', async (req, res) => {
   if (username.length < 3 || username.length > 20) return res.status(400).json({ error: 'Kullanıcı adı 3 ile 20 karakter arasında olmalıdır.' });
   if (password.length < 6) return res.status(400).json({ error: 'Şifre en az 6 karakter olmalıdır.' });
 
-  let userRecord = null;
   try {
     const usernameCheck = await db.collection('users').where('username', '==', username).get();
     if (!usernameCheck.empty) return res.status(400).json({ error: 'Bu kullanıcı adı zaten kullanımda.' });
 
-    userRecord = await auth.createUser({ email, password, displayName: username });
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    // Firebase Authentication'da kullanıcı oluşturma
+    const userRecord = await auth.createUser({ email, password, displayName: username });
 
+    // Veritabanına başlangıç kaydını ekleme
     await db.collection('users').doc(userRecord.uid).set({
       uid: userRecord.uid,
       email,
       username,
-      isVerified: false,
-      verificationCode: verificationCode,
       createdAt: FieldValue.serverTimestamp(),
       rooms: []
     });
 
-    // Resend ile Mail Gönderimi
-    try {
-      await sendVerificationEmail(email, username, verificationCode);
-      console.log(`[RESEND BAŞARILI] Doğrulama kodu gönderildi: ${email}`);
-    } catch (mailError) {
-      console.error("[RESEND HATASI]:", mailError.message);
-      await auth.deleteUser(userRecord.uid).catch(() => {});
-      await db.collection('users').doc(userRecord.uid).delete().catch(() => {});
-      return res.status(500).json({ error: `Mail gönderilemedi: ${mailError.message}` });
+    // Firebase REST API ile kullanıcıya anında Doğrulama Linki E-postası gönderme
+    if (!FIREBASE_WEB_API_KEY) throw new Error("FIREBASE_WEB_API_KEY eksik!");
+
+    const verifyEmailRes = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestType: "VERIFY_EMAIL",
+          idToken: await getFirebaseIdToken(email, password) // Firebase sistemine özel geçici giriş token'ı
+        }),
+      }
+    );
+
+    if (!verifyEmailRes.ok) {
+       console.error("Firebase Mail Hatası:", await verifyEmailRes.text());
+       return res.status(500).json({ error: 'Hesap oluşturuldu ancak onay e-postası gönderilemedi.' });
     }
 
-    res.json({ success: true, message: 'Kayıt başarılı! Lütfen e-postanıza gelen doğrulama kodunu girin.' });
+    res.json({ success: true, message: 'Kayıt başarılı! Lütfen e-postanıza gelen linke tıklayarak hesabınızı onaylayın.' });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-// 🟡 KODU TEKRAR GÖNDER (RESEND-CODE)
+// Yardımcı Fonksiyon: Firebase REST API'den geçici idToken alma (Mail atabilmek için gereklidir)
+async function getFirebaseIdToken(email, password) {
+  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, returnSecureToken: true }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error.message);
+  return data.idToken;
+}
+
+// 🟡 KODU TEKRAR GÖNDER (RESEND-LINK)
 app.post('/api/resend-code', async (req, res) => {
-  const { email } = req.body;
-  if (!email) return res.status(400).json({ error: 'E-posta adresi zorunludur.' });
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'E-posta ve şifrenizi girmelisiniz.' });
 
   try {
-    const userSnap = await db.collection('users').where('email', '==', email).limit(1).get();
-    if (userSnap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
-
-    const userDoc = userSnap.docs[0];
-    const userData = userDoc.data();
-
-    if (userData.isVerified) return res.status(400).json({ error: 'Bu hesap zaten doğrulanmış.' });
-
-    const newCode = Math.floor(100000 + Math.random() * 900000).toString();
-    await userDoc.ref.update({ verificationCode: newCode });
-
-    try {
-      await sendVerificationEmail(email, userData.username, newCode);
-      console.log(`[RESEND BAŞARILI] Yeni kod gönderildi: ${email}`);
-    } catch (mailError) {
-      console.error("[RESEND HATASI]:", mailError.message);
-      return res.status(500).json({ error: `Mail iletilemedi: ${mailError.message}` });
-    }
-
-    res.json({ success: true, message: 'Yeni doğrulama kodu e-postanıza gönderildi.' });
-  } catch (err) {
-    res.status(500).json({ error: 'Kod gönderilirken bir hata oluştu.' });
-  }
-});
-
-// 🟠 E-POSTA DOĞRULAMA (VERIFY-EMAIL)
-app.post('/api/verify-email', async (req, res) => {
-  const { email, code } = req.body;
-  if (!email || !code) return res.status(400).json({ error: 'E-posta ve doğrulama kodu zorunludur.' });
-
-  try {
-    const userSnap = await db.collection('users').where('email', '==', email).limit(1).get();
-    if (userSnap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
-
-    const userDoc = userSnap.docs[0];
-    const userData = userDoc.data();
-
-    if (userData.isVerified) return res.status(400).json({ error: 'Bu e-posta adresi zaten doğrulanmış.' });
-    if (userData.verificationCode !== code.trim()) return res.status(400).json({ error: 'Geçersiz doğrulama kodu!' });
-
-    await userDoc.ref.update({
-      isVerified: true,
-      verificationCode: FieldValue.delete()
+    const idToken = await getFirebaseIdToken(email, password);
+    const verifyEmailRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestType: "VERIFY_EMAIL", idToken }),
     });
 
-    res.json({ success: true, message: 'E-posta başarıyla doğrulandı! Şimdi giriş yapabilirsiniz.' });
+    if (!verifyEmailRes.ok) throw new Error("Mail tekrar gönderilemedi.");
+    res.json({ success: true, message: 'Yeni onay linki e-postanıza gönderildi.' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Giriş bilgileriniz hatalı veya sistemde sorun var.' });
   }
 });
 
@@ -211,17 +156,9 @@ app.post('/api/login', async (req, res) => {
       }
     }
 
-    if (userDocData && userDocData.isVerified === false) {
-      return res.status(403).json({ 
-        error: 'Hesabınız henüz doğrulanmamış. Lütfen kodunuzu girin.',
-        needsVerification: true,
-        email: email
-      });
-    }
-
     if (!FIREBASE_WEB_API_KEY) return res.status(500).json({ error: 'Sunucu yapılandırma hatası (API Key Eksik).' });
 
-    const verifyRes = await fetch(
+    const loginRes = await fetch(
       `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`,
       {
         method: 'POST',
@@ -230,7 +167,26 @@ app.post('/api/login', async (req, res) => {
       }
     );
 
-    if (!verifyRes.ok) return res.status(401).json({ error: 'Hatalı şifre veya e-posta!' });
+    const loginData = await loginRes.json();
+    if (!loginRes.ok) return res.status(401).json({ error: 'Hatalı şifre veya e-posta!' });
+
+    // 🔴 KRİTİK KONTROL: Kullanıcı mailindeki linke tıkladı mı? (Firebase'den anlık kontrol)
+    const userInfoRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${FIREBASE_WEB_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken: loginData.idToken })
+    });
+    
+    const userInfoData = await userInfoRes.json();
+    const isEmailVerified = userInfoData.users[0].emailVerified;
+
+    if (!isEmailVerified) {
+      return res.status(403).json({ 
+        error: 'Hesabınız onaylanmamış. Lütfen e-postanızdaki onay linkine tıklayın.',
+        needsVerification: true,
+        email: email
+      });
+    }
 
     res.json({ success: true, username: username });
   } catch (err) {
@@ -258,7 +214,6 @@ app.delete('/api/delete-account', async (req, res) => {
     await userDoc.ref.delete();
     res.json({ success: true, message: 'Hesap başarıyla silindi.' });
   } catch (err) {
-    console.error("Hesap silme işlemi başarısız:", err);
     res.status(500).json({ error: 'Hesap silinirken sunucu kaynaklı bir hata oluştu.' });
   }
 });
@@ -300,7 +255,7 @@ app.post('/api/token', async (req, res) => {
       if (!userSnap.empty) {
         let rooms = userSnap.docs[0].data().rooms || [];
         if (!rooms.includes(roomName)) {
-           rooms.push(roomName);
+           rooms.push(rooms);
            if (rooms.length > 10) rooms.shift();
            await userSnap.docs[0].ref.update({ rooms });
         }
@@ -322,11 +277,7 @@ app.post('/api/token', async (req, res) => {
 
 app.get('/api/chat/:roomName', async (req, res) => {
   try {
-    const snapshot = await db.collection('rooms').doc(req.params.roomName)
-                             .collection('messages')
-                             .orderBy('timestamp', 'desc')
-                             .limit(50)
-                             .get();
+    const snapshot = await db.collection('rooms').doc(req.params.roomName).collection('messages').orderBy('timestamp', 'desc').limit(50).get();
     const messages = snapshot.docs.map(doc => doc.data()).reverse();
     res.json({ messages });
   } catch (err) {
@@ -348,7 +299,6 @@ app.post('/api/chat', async (req, res) => {
 });
 
 app.use(express.static(path.join(__dirname, 'dist')));
-
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'API endpoint bulunamadı.' });
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
