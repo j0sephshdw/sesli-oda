@@ -67,10 +67,11 @@ app.post('/api/register', async (req, res) => {
 
     const userRecord = await auth.createUser({ email, password, displayName: username });
 
-    // 🟡 YENİ: Arkadaşlık listeleri veritabanına eklendi
     await db.collection('users').doc(userRecord.uid).set({
       uid: userRecord.uid, email, username, createdAt: FieldValue.serverTimestamp(), 
-      rooms: [], friends: [], friendRequests: [], sentRequests: []
+      lastActive: FieldValue.serverTimestamp(), // Yeni: Son görülme
+      rooms: [], friends: [], friendRequests: [], sentRequests: [],
+      bio: 'Merhaba! Ben Sesli Oda kullanıyorum.', color: '#5865F2'
     });
 
     if (!FIREBASE_WEB_API_KEY) throw new Error("Sunucu yapılandırma hatası (API Key Eksik).");
@@ -97,19 +98,19 @@ app.post('/api/login', async (req, res) => {
   if (!identifier || !password) return res.status(400).json({ error: 'Bilgiler eksik.' });
 
   try {
-    let email = identifier; let username = identifier; let userDocData = null;
+    let email = identifier; let username = identifier; let userDocData = null; let userRef = null;
 
     if (!identifier.includes('@')) {
       const userSnap = await db.collection('users').where('username', '==', identifier).limit(1).get();
       if (userSnap.empty) return res.status(404).json({ error: 'Bu kullanıcı adıyla kayıtlı bir hesap bulunamadı.' });
       userDocData = userSnap.docs[0].data(); email = userDocData.email; username = userDocData.username;
+      userRef = userSnap.docs[0].ref;
     } else {
       const userSnap = await db.collection('users').where('email', '==', email).limit(1).get();
       if (userSnap.empty) return res.status(404).json({ error: 'Bu e-posta ile kayıtlı bir hesap bulunamadı.' });
       userDocData = userSnap.docs[0].data(); username = userDocData.username;
+      userRef = userSnap.docs[0].ref;
     }
-
-    if (!FIREBASE_WEB_API_KEY) return res.status(500).json({ error: 'Sunucu yapılandırma hatası.' });
 
     const loginRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -127,6 +128,9 @@ app.post('/api/login', async (req, res) => {
     if (!userInfoData.users[0].emailVerified) {
       return res.status(403).json({ error: 'Hesabınız onaylanmamış. Lütfen linke tıklayın.', needsVerification: true, email: email });
     }
+
+    // Başarılı girişte anında "Aktif" işaretle
+    await userRef.update({ lastActive: FieldValue.serverTimestamp() });
 
     res.json({ success: true, username: username });
   } catch (err) { res.status(500).json({ error: 'Giriş işlemi başarısız: ' + translateFirebaseError(err.message) }); }
@@ -175,42 +179,91 @@ app.delete('/api/delete-account', async (req, res) => {
 });
 
 // ==========================================
-// YENİ: SOSYAL AĞ & ARKADAŞLIK ROUTE'LARI
+// SOSYAL AĞ & PROFİL ROUTE'LARI
 // ==========================================
 
-// Kullanıcı Profilini ve Arkadaşlık Durumlarını Getir
+// 🟡 YENİ: Zenginleştirilmiş Profil ve Arkadaş (Online Status) Getirme
 app.get('/api/users/:username/profile', async (req, res) => {
   try {
     const snap = await db.collection('users').where('username', '==', req.params.username).limit(1).get();
     if (snap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+    
+    const userRef = snap.docs[0].ref;
     const data = snap.docs[0].data();
+
+    // Kullanıcı bu isteği attığında "Buradayım" (Heartbeat) demiş olur
+    await userRef.update({ lastActive: FieldValue.serverTimestamp() });
+
+    // Arkadaşların Online Durumu, Biyografisi ve Rengini Çek
+    let friendsDetail = [];
+    const friendUsernames = data.friends || [];
+
+    if (friendUsernames.length > 0) {
+       // Tüm arkadaşların detaylarını asenkron olarak Firestore'dan al
+       const friendPromises = friendUsernames.map(f => db.collection('users').where('username', '==', f).limit(1).get());
+       const friendSnaps = await Promise.all(friendPromises);
+       
+       friendsDetail = friendSnaps.map(fSnap => {
+          if (fSnap.empty) return null;
+          const fd = fSnap.docs[0].data();
+          
+          let isOnline = false;
+          if (fd.lastActive && typeof fd.lastActive.toDate === 'function') {
+             // Son 2 dakika içinde istek attıysa ONLINE (Yeşil Nokta)
+             const diff = Date.now() - fd.lastActive.toDate().getTime();
+             isOnline = diff < 120000;
+          }
+
+          return { 
+            username: fd.username, 
+            bio: fd.bio || 'Sesli Oda kullanıcısı', 
+            color: fd.color || '#5865F2', 
+            isOnline 
+          };
+       }).filter(Boolean);
+    }
+
     res.json({
       rooms: data.rooms || [],
-      friends: data.friends || [],
+      friendsList: friendUsernames,
+      friendsDetail: friendsDetail,
       friendRequests: data.friendRequests || [],
-      sentRequests: data.sentRequests || []
+      sentRequests: data.sentRequests || [],
+      bio: data.bio || '',
+      color: data.color || '#5865F2'
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Kişi Arama
+// 🟡 YENİ: Biyografi ve Profil Rengi Güncelleme
+app.put('/api/users/:username/profile', async (req, res) => {
+  const { bio, color } = req.body;
+  try {
+    const snap = await db.collection('users').where('username', '==', req.params.username).limit(1).get();
+    if (snap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+    
+    await snap.docs[0].ref.update({ 
+      bio: bio.substring(0, 100), // Max 100 karakter
+      color: color || '#5865F2' 
+    });
+    
+    res.json({ success: true, message: 'Profil başarıyla güncellendi!' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/users/search', async (req, res) => {
   const { q, currentUsername } = req.query;
   if (!q) return res.json({ users: [] });
   try {
     const snapshot = await db.collection('users')
-      .where('username', '>=', q)
-      .where('username', '<=', q + '\uf8ff')
+      .where('username', '>=', q).where('username', '<=', q + '\uf8ff')
       .limit(10).get();
       
-    const users = snapshot.docs
-      .map(doc => doc.data().username)
-      .filter(name => name !== currentUsername);
+    const users = snapshot.docs.map(doc => doc.data().username).filter(name => name !== currentUsername);
     res.json({ users });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Arkadaşlık İsteği Gönder
 app.post('/api/friends/add', async (req, res) => {
   const { sender, target } = req.body;
   try {
@@ -223,11 +276,8 @@ app.post('/api/friends/add', async (req, res) => {
     const targetRef = targetSnap.docs[0].ref;
 
     await db.runTransaction(async (t) => {
-      const senderDoc = await t.get(senderRef);
-      const targetDoc = await t.get(targetRef);
-
+      const senderDoc = await t.get(senderRef); const targetDoc = await t.get(targetRef);
       const senderData = senderDoc.data();
-      const targetData = targetDoc.data();
 
       if ((senderData.friends || []).includes(target)) throw new Error('Bu kişiyle zaten arkadaşsınız.');
       if ((senderData.sentRequests || []).includes(target)) throw new Error('İstek zaten gönderilmiş.');
@@ -240,9 +290,8 @@ app.post('/api/friends/add', async (req, res) => {
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
-// İstek Yanıtlama (Kabul/Ret)
 app.post('/api/friends/respond', async (req, res) => {
-  const { user, target, action } = req.body; // action: 'accept' | 'reject'
+  const { user, target, action } = req.body;
   try {
     const userSnap = await db.collection('users').where('username', '==', user).limit(1).get();
     const targetSnap = await db.collection('users').where('username', '==', target).limit(1).get();
@@ -254,14 +303,8 @@ app.post('/api/friends/respond', async (req, res) => {
 
     await db.runTransaction(async (t) => {
       if (action === 'accept') {
-        t.update(userRef, { 
-          friends: FieldValue.arrayUnion(target),
-          friendRequests: FieldValue.arrayRemove(target) 
-        });
-        t.update(targetRef, { 
-          friends: FieldValue.arrayUnion(user),
-          sentRequests: FieldValue.arrayRemove(user) 
-        });
+        t.update(userRef, { friends: FieldValue.arrayUnion(target), friendRequests: FieldValue.arrayRemove(target) });
+        t.update(targetRef, { friends: FieldValue.arrayUnion(user), sentRequests: FieldValue.arrayRemove(user) });
       } else {
         t.update(userRef, { friendRequests: FieldValue.arrayRemove(target) });
         t.update(targetRef, { sentRequests: FieldValue.arrayRemove(user) });

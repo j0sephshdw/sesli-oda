@@ -1937,3 +1937,104 @@ body {
     z-index: 1000;
     min-width: 250px;
 }
+/* ==========================================================================
+   24. ULTRA PREMIUM SOSYAL AĞ EKLENTİSİ (Zengin Kartlar, Online Status, Renk Seçimi)
+   ========================================================================== */
+
+/* Zengin Arkadaş Kartı */
+.friend-item-rich {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: #1e1f22;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    transition: 0.2s;
+    margin-bottom: 8px;
+}
+
+    .friend-item-rich:hover {
+        border-color: #3f4147;
+        background: #2b2d31;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+/* Profil Avatarları ve Online Noktası */
+.friend-avatar-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.online-dot {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 3px solid #1e1f22;
+    transition: 0.3s;
+}
+
+.friend-item-rich:hover .online-dot {
+    border-color: #2b2d31; /* Hover'da arka plan değişince çeperi de uydur */
+}
+
+.online-dot.online {
+    background: #23a55a;
+    box-shadow: 0 0 6px rgba(35, 165, 90, 0.6);
+}
+
+.online-dot.offline {
+    background: #80848e;
+}
+
+/* Arkadaş Detay ve Biyografi Kısmı */
+.friend-details {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.friend-bio {
+    font-size: 11.5px;
+    color: #949ba4;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 250px;
+}
+
+/* Profil Sekmesi: Renk Seçici (Color Palette) */
+.color-picker-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 10px;
+    padding: 10px;
+    background: #1e1f22;
+    border-radius: 8px;
+    border: 1px solid #3f4147;
+}
+
+.color-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    border: 2px solid transparent;
+}
+
+    .color-circle:hover {
+        transform: scale(1.1);
+    }
+
+    .color-circle.selected {
+        transform: scale(1.2);
+        border-color: white;
+        box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+    }
