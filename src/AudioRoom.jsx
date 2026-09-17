@@ -14,7 +14,6 @@ import {
 } from '@livekit/components-react';
 import { Track, RoomEvent, ConnectionState } from 'livekit-client';
 import { KrispNoiseFilter, isKrispNoiseFilterSupported } from '@livekit/krisp-noise-filter';
-// YENİ: Arka Plan Bulanıklaştırma (Virtual Background) kütüphanesi
 import { BackgroundBlur } from '@livekit/track-processors';
 
 const getAvatarColor = (name) => {
@@ -25,12 +24,17 @@ const getAvatarColor = (name) => {
 };
 
 const renderMessageText = (text, myDisplayName) => {
-  const parts = text.split(/(https?:\/\/[^\s]+|\*\*.*?\*\*|@[^\s]+)/g);
+  const parts = text.split(/(https?:\/\/[^\s]+|\*\*.*?\*\*|__.*?__|~~.*?~~|@[^\s]+)/g);
   return parts.map((part, i) => {
+    if (!part) return null;
     if (part.match(/https?:\/\/[^\s]+/)) {
       return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">{part}</a>;
     } else if (part.match(/\*\*(.*?)\*\*/)) {
       return <strong key={i}>{part.replace(/\*\*/g, '')}</strong>;
+    } else if (part.match(/__(.*?)__/)) {
+      return <u key={i}>{part.replace(/__/g, '')}</u>;
+    } else if (part.match(/~~(.*?)~~/)) {
+      return <del key={i}>{part.replace(/~~/g, '')}</del>;
     } else if (part.toLowerCase() === `@${myDisplayName.toLowerCase()}`) {
       return <span key={i} className="mention-badge">{part}</span>;
     } else if (part.startsWith('@')) {
@@ -49,6 +53,10 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
 
   const { send, chatMessages } = useChat();
   const [msg, setMsg] = useState('');
+  
+  // VERİTABANI GEÇMİŞ MESAJLARI (EKSİKSİZ EKLENDİ)
+  const [dbMessages, setDbMessages] = useState([]);
+  
   const chatEndRef = useRef(null);
 
   const [isNoiseCancellingActive, setIsNoiseCancellingActive] = useState(false);
@@ -71,16 +79,41 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   const [isIdle, setIsIdle] = useState(false);
   const [toasts, setToasts] = useState([]);
 
-  // YENİ STATE'LER: Sabitleme (Pin) ve Blur (Bulanıklaştırma)
   const [pinnedParticipantId, setPinnedParticipantId] = useState(null);
   const [isBlurred, setIsBlurred] = useState(false);
+  
+  // ODA SÜRESİ (UPTIME SAYACI EKSİKSİZ EKLENDİ)
+  const [uptime, setUptime] = useState(0);
 
   const processorRef = useRef(null);
-  const blurProcessorRef = useRef(null); // Blur motoru için
+  const blurProcessorRef = useRef(null); 
   const stageRef = useRef(null);
   const prevChatCount = useRef(0);
   const myDisplayName = (localParticipant?.name || localParticipant?.identity || '').split('_')[0];
 
+  // 1. ODA GEÇMİŞİNİ VERİTABANINDAN ÇEK (DB MESSAGES)
+  useEffect(() => {
+    fetch(`/api/chat/${roomName}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.messages) setDbMessages(data.messages);
+      });
+  }, [roomName]);
+
+  // 2. ZAMANLAYICI (UPTIME)
+  useEffect(() => {
+    const timer = setInterval(() => setUptime(prev => prev + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatUptime = (totalSeconds) => {
+    const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+    const s = (totalSeconds % 60).toString().padStart(2, '0');
+    const h = Math.floor(totalSeconds / 3600);
+    return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
+  };
+
+  // 3. SİNEMATİK MOD (IDLE TRACKER)
   useEffect(() => {
     let timeout;
     const handleMouseMove = () => {
@@ -123,7 +156,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
     if (room) await room.switchActiveDevice(kind, deviceId);
   };
 
-  // YENİ: Arka Planı Bulanıklaştırma (Blur) Fonksiyonu
   const toggleBlur = async () => {
     const track = localParticipant?.getTrackPublication(Track.Source.Camera)?.videoTrack;
     if (!track) return addToast("⚠️ Önce kameranızı açmalısınız!", "error");
@@ -135,7 +167,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
         setIsBlurred(false);
         addToast("👁️ Arka plan bulanıklığı kapatıldı.", "info");
       } else {
-        const blur = BackgroundBlur(10); // Bulanıklık şiddeti 10
+        const blur = BackgroundBlur(10); 
         await track.setProcessor(blur);
         blurProcessorRef.current = blur;
         setIsBlurred(true);
@@ -146,7 +178,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
     }
   };
 
-  // Kamera kapanırsa blur'u otomatik temizle
   useEffect(() => {
     if (!isCameraEnabled && isBlurred) {
       setIsBlurred(false);
@@ -179,7 +210,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
     } catch(e) {}
   };
 
-  // YENİ: Ses Tahtası (Soundboard) Frekans Üreticileri
   const playSoundboardEffect = (effectType) => {
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -192,7 +222,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
       osc.connect(gain); gain.connect(ctx.destination);
 
       if (effectType === 'ding') {
-        // ZİL SESİ (Doğru Cevap)
         osc.type = 'sine';
         osc.frequency.setValueAtTime(800, ctx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(1600, ctx.currentTime + 0.1);
@@ -200,7 +229,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
         osc.start(); osc.stop(ctx.currentTime + 0.5);
       } else if (effectType === 'buzzer') {
-        // YANLIŞ CEVAP SESİ
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(100, ctx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.3);
@@ -253,14 +281,22 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
          gain.gain.setValueAtTime(0.02, ctx.currentTime);
          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
       }
+
       osc.start();
       osc.stop(ctx.currentTime + (type === 'screen_share' ? 0.2 : type === 'mention' ? 0.25 : 0.15));
     } catch(e) {}
   };
 
+  // 4. MESAJ GÖNDERME (HEM LIVEKIT HEM DB)
   const handleSendMessage = () => {
     if (msg.trim()) {
       send(msg);
+      // Backend veritabanına kaydet
+      fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomName, sender: myDisplayName, message: msg, timestamp: Date.now() })
+      });
       setMsg('');
     }
   };
@@ -281,9 +317,8 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
     }
   };
 
-  // YENİ: Ses Tahtası Yayınlayıcısı
   const broadcastSoundboard = (effect) => {
-    playSoundboardEffect(effect); // Önce bizde çalsın
+    playSoundboardEffect(effect); 
     if (room?.localParticipant) {
       const data = JSON.stringify({ type: 'SOUNDBOARD', effect });
       room.localParticipant.publishData(new TextEncoder().encode(data), { reliable: true });
@@ -303,7 +338,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
       prevChatCount.current = chatMessages.length;
     }
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages, localParticipant, myDisplayName, muteChatSounds]);
+  }, [chatMessages, dbMessages, localParticipant, myDisplayName, muteChatSounds]);
 
   useEffect(() => {
     if(screenTracks.length > 0) playTone('screen_share');
@@ -365,7 +400,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
         const data = JSON.parse(str);
         if (data.type === 'EMOJI_REACTION') spawnFloatingEmoji(data.emoji);
         if (data.type === 'TYPING') setTyping(prev => ({ ...prev, [data.name]: Date.now() }));
-        if (data.type === 'SOUNDBOARD') playSoundboardEffect(data.effect); // YENİ: Başkasından gelen efekti çal
+        if (data.type === 'SOUNDBOARD') playSoundboardEffect(data.effect); 
         if (data.type === 'KICK' && data.targetIdentity === localParticipant?.identity) {
             alert("Oda kurucusu (Admin) tarafından odadan atıldınız.");
             handleLeaveRoom();
@@ -381,7 +416,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
     room.on(RoomEvent.ParticipantDisconnected, (p) => {
       playTone('leave');
       addToast(`🔴 ${p.name || p.identity.split('_')[0]} odadan ayrıldı.`, 'error');
-      if (p.identity === pinnedParticipantId) setPinnedParticipantId(null); // Çıkan kişiyi sabitlemeden düşür
+      if (p.identity === pinnedParticipantId) setPinnedParticipantId(null); 
     });
     
     room.on(RoomEvent.DataReceived, handleDataReceived);
@@ -498,7 +533,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
     connColor = '#da373c'; 
   }
 
-  // Sabitlenmiş kullanıcıyı bul
   const pinnedParticipant = participants.find(p => p.identity === pinnedParticipantId);
   const showTopStage = screenTracks.length > 0 || pinnedParticipant;
 
@@ -535,7 +569,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
                 </select>
               </div>
               
-              {/* YENİ: Arka Plan Blur Butonu */}
               <div className="form-group" style={{ marginTop: '10px' }}>
                 <button 
                   onClick={toggleBlur} 
@@ -576,6 +609,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
             <h3>🔊 {roomName.toUpperCase()}</h3>
             <span className="live-badge">🔴 Canlı</span>
             <span className="people-count">👥 {participants.length} Kişi</span>
+            <span className="uptime-badge" title="Odada geçen süre">⏱️ {formatUptime(uptime)}</span>
           </div>
           <div className="header-actions">
             <button onClick={() => setIsChatVisible(!isChatVisible)} className="action-btn" title="Sohbeti Gizle/Aç">
@@ -587,7 +621,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
 
         <div className={`dynamic-view-area ${showTopStage ? 'has-screen' : ''}`}>
           
-          {/* ÜST SAHNE ALANI (Ekran Paylaşımı VEYA Sabitlenmiş Kişi) */}
           {showTopStage && (
             <div className="screen-share-stage" ref={stageRef} onDoubleClick={toggleCardFullScreen}>
               <div className="screen-overlay-actions">
@@ -598,11 +631,9 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
                 )}
               </div>
               
-              {/* Ekran Paylaşımı Varsa Onu Göster */}
               {screenTracks.length > 0 ? (
                  <TrackLoop tracks={screenTracks}><ParticipantTile /></TrackLoop>
               ) : (
-                /* Yoksa Sabitlenmiş Kullanıcıyı Dev Ekran Yap */
                 pinnedParticipant && (
                   <div className="pinned-user-container">
                     {pinnedParticipant.isCameraEnabled ? (
@@ -663,39 +694,40 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
                      </div>
                   )}
                   
-                  <div className={`card-hover-overlay ${isIdle ? 'idle-hidden' : ''}`}>
-                    {/* YENİ: SABİTLEME BUTONU (Hover menüsünde) */}
-                    <button className="pin-btn" onClick={() => setPinnedParticipantId(isPinned ? null : p.identity)} title={isPinned ? "Ayır" : "Sahneye Sabitle"}>
-                       {isPinned ? "❌ Ayır" : "📌 Sabitle"}
-                    </button>
-
-                    {isCamOn && (
-                      <div className="cam-actions" style={{marginTop: '10px'}}>
-                        <button onClick={toggleCardPiP} title="Pencere İçinde Aç">🗗 PiP</button>
-                        <button onClick={toggleCardFullScreen} title="Tam Ekran Yap">⛶ Tam Ekran</button>
-                      </div>
-                    )}
-                    
-                    {isAdmin && p.identity !== localParticipant?.identity && (
-                      <button className="kick-btn" onClick={() => handleKickUser(p.identity, displayName)} title="Bu kullanıcıyı odadan at" style={{marginTop: '10px'}}>
-                        👢 Odadan At
+                  {(p.identity !== localParticipant?.identity || isCamOn) && (
+                    <div className={`card-hover-overlay ${isIdle ? 'idle-hidden' : ''}`}>
+                      <button className="pin-btn" onClick={() => setPinnedParticipantId(isPinned ? null : p.identity)} title={isPinned ? "Ayır" : "Sahneye Sabitle"}>
+                         {isPinned ? "❌ Ayır" : "📌 Sabitle"}
                       </button>
-                    )}
 
-                    {p.identity !== localParticipant?.identity && (
-                      <div className="vol-slider-wrapper" style={{marginTop: '10px'}}>
-                        <span>Kullanıcı Sesi</span>
-                        <input 
-                          type="range" min="0" max="1" step="0.01" defaultValue="1" 
-                          className="vol-slider" title="Sesi ayarla"
-                          onChange={(e) => {
-                            const audioTrack = p.getTrackPublication(Track.Source.Microphone)?.track;
-                            if (audioTrack && audioTrack.setVolume) audioTrack.setVolume(parseFloat(e.target.value));
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
+                      {isCamOn && (
+                        <div className="cam-actions" style={{marginTop: '10px'}}>
+                          <button onClick={toggleCardPiP} title="Pencere İçinde Aç">🗗 PiP</button>
+                          <button onClick={toggleCardFullScreen} title="Tam Ekran Yap">⛶ Tam Ekran</button>
+                        </div>
+                      )}
+                      
+                      {isAdmin && p.identity !== localParticipant?.identity && (
+                        <button className="kick-btn" onClick={() => handleKickUser(p.identity, displayName)} title="Bu kullanıcıyı odadan at" style={{marginTop: '10px'}}>
+                          👢 Odadan At
+                        </button>
+                      )}
+
+                      {p.identity !== localParticipant?.identity && (
+                        <div className="vol-slider-wrapper" style={{marginTop: '10px'}}>
+                          <span>Kullanıcı Sesi</span>
+                          <input 
+                            type="range" min="0" max="1" step="0.01" defaultValue="1" 
+                            className="vol-slider" title="Sesi ayarla"
+                            onChange={(e) => {
+                              const audioTrack = p.getTrackPublication(Track.Source.Microphone)?.track;
+                              if (audioTrack && audioTrack.setVolume) audioTrack.setVolume(parseFloat(e.target.value));
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -707,7 +739,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
             <button onClick={() => sendEmojiReaction('🔥')} className="action-btn">🔥</button>
             <button onClick={() => sendEmojiReaction('👍')} className="action-btn">👍</button>
             <button onClick={() => sendEmojiReaction('😂')} className="action-btn">😂</button>
-            {/* YENİ: SES TAHTASI BUTONLARI */}
             <div className="soundboard-separator"></div>
             <button onClick={() => broadcastSoundboard('ding')} className="action-btn soundboard-btn" title="Zil Çal">🔔</button>
             <button onClick={() => broadcastSoundboard('buzzer')} className="action-btn soundboard-btn" title="Yanlış Cevap">❌</button>
@@ -752,7 +783,23 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
         <div className="custom-chat-panel">
           <div className="chat-header">💬 Sohbet</div>
           <div className="chat-messages">
-            <div className="chat-sys-msg">Mesajlar uçtan uca şifrelidir.</div>
+            <div className="chat-sys-msg">Oda geçmişi ve canlı mesajlar.</div>
+            
+            {/* 1. ÖNCE VERİTABANINDAKİ ESKİ MESAJLARI DİZ */}
+            {dbMessages.map((m, idx) => {
+               const isMentioned = m.message.toLowerCase().includes(`@${myDisplayName.toLowerCase()}`);
+               return (
+                 <div key={`db-${idx}`} className={`chat-msg ${isMentioned ? 'mentioned-msg' : ''}`}>
+                   <div className="chat-msg-header">
+                     <span className="chat-sender">{m.sender}</span>
+                     <span className="chat-time">{formatTime(m.timestamp)}</span>
+                   </div>
+                   <div className="chat-text">{renderMessageText(m.message, myDisplayName)}</div>
+                 </div>
+               )
+            })}
+
+            {/* 2. SONRA O AN ATILAN CANLI MESAJLARI DİZ */}
             {chatMessages.map(m => {
               const isMentioned = m.message.toLowerCase().includes(`@${myDisplayName.toLowerCase()}`);
               return (
@@ -780,7 +827,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
               value={msg} 
               onChange={handleTyping} 
               onKeyDown={e => e.key === 'Enter' && handleSendMessage()} 
-              placeholder="Mesaj... (@isim veya **kalın**)" 
+              placeholder="Mesaj... (@isim, **kalın**, __alt__)" 
             />
             <button onClick={handleSendMessage}>Gönder</button>
           </div>

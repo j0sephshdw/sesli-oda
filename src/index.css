@@ -1545,3 +1545,119 @@ body {
         background: #313338 !important;
         transform: scale(1.1);
     }
+/* ==========================================================================
+   22. KAYIT OL & DASHBOARD (GEÇMİŞ ODALAR) EKRANI
+   ========================================================================== */
+
+/* Sekmeli Giriş Yapısı */
+.auth-tabs {
+    display: flex;
+    background: #1e1f22;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+    .auth-tabs button {
+        flex: 1;
+        background: transparent;
+        color: #949ba4;
+        border: none;
+        padding: 10px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: 0.2s;
+    }
+
+        .auth-tabs button.active {
+            background: #5865f2;
+            color: white;
+        }
+
+/* Dashboard Düzeni */
+.dashboard-container {
+    display: flex;
+    height: 100vh;
+    background: #1e1f22;
+}
+
+.dashboard-sidebar {
+    width: 280px;
+    background: #2b2d31;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid #1e1f22;
+}
+
+.user-profile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #1e1f22;
+    margin-bottom: 20px;
+}
+
+    .user-profile h3 {
+        margin: 10px 0;
+        color: white;
+    }
+
+.logout-btn {
+    background: transparent;
+    color: #da373c;
+    border: 1px solid #da373c;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+    .logout-btn:hover {
+        background: #da373c;
+        color: white;
+    }
+
+.my-rooms-section h4 {
+    color: #949ba4;
+    text-transform: uppercase;
+    font-size: 12px;
+    margin-bottom: 15px;
+}
+
+.room-list {
+    list-style: none;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+    .room-list li {
+        background: #313338;
+        color: #f2f3f5;
+        padding: 10px 15px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: bold;
+        transition: 0.2s;
+    }
+
+        .room-list li:hover {
+            background: #3f4147;
+            color: white;
+        }
+
+.no-rooms {
+    color: #949ba4;
+    font-size: 13px;
+    font-style: italic;
+}
+
+.dashboard-main {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
