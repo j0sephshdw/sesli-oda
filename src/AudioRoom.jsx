@@ -37,6 +37,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   const [floatingEmojis, setFloatingEmojis] = useState([]);
   
   const [isChatVisible, setIsChatVisible] = useState(true);
+  const [unreadCount, setUnreadCount] = useState(0); // YENİ: Okunmayan Mesaj Sayacı
   const [typing, setTyping] = useState({});
 
   const [showSettings, setShowSettings] = useState(false);
@@ -194,15 +195,19 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
     }
   };
 
+  // YENİ: Unread Badge Kontrolü
   useEffect(() => {
     if (chatMessages.length > prevChatCount.current) {
       const lastMsg = chatMessages[chatMessages.length - 1];
       if (lastMsg.from?.identity !== localParticipant?.identity) {
         if (lastMsg.message.toLowerCase().includes(`@${myDisplayName.toLowerCase()}`)) { playTone('mention'); } else { playTone('message'); }
+        if (!isChatVisible) {
+          setUnreadCount(prev => prev + 1);
+        }
       }
       prevChatCount.current = chatMessages.length;
     }
-  }, [chatMessages, localParticipant, myDisplayName, playTone]);
+  }, [chatMessages, localParticipant, myDisplayName, playTone, isChatVisible]);
 
   useEffect(() => { if(screenTracks.length > 0) playTone('screen_share'); }, [screenTracks.length, playTone]);
 
@@ -296,6 +301,11 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
     if (videoEl && document.pictureInPictureEnabled) { try { if (document.pictureInPictureElement) { await document.exitPictureInPicture(); } else { await videoEl.requestPictureInPicture(); } } catch (err) { console.error("PiP Hatası:", err); } } else { alert("Tarayıcınız Pencere İçi (PiP) modunu desteklemiyor."); }
   };
 
+  const toggleChatVisibility = () => {
+    setIsChatVisible(!isChatVisible);
+    if (!isChatVisible) setUnreadCount(0); // Sohbet açılınca rozeti sıfırla
+  };
+
   const activeTypers = Object.keys(typing).filter(name => name !== myDisplayName);
 
   let connText = 'Bağlanıyor...'; let connColor = '#faa61a'; 
@@ -362,8 +372,10 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
             <span className="uptime-badge" title="Odada geçen süre">⏱️ {formatUptime(uptime)}</span>
           </div>
           <div className="header-actions">
-            <button onClick={() => setIsChatVisible(!isChatVisible)} className="action-btn" title="Sohbeti Gizle/Aç">
-              {isChatVisible ? '💬 Sohbeti Gizle' : '💬 Sohbeti Aç'}
+            <button onClick={toggleChatVisibility} className="action-btn" title="Sohbeti Gizle/Aç">
+              {isChatVisible ? '💬 Sohbeti Gizle' : (
+                <>💬 Sohbeti Aç {unreadCount > 0 && <span className="unread-badge">{unreadCount}</span>}</>
+              )}
             </button>
             <button onClick={copyInvite} className="invite-btn" style={{marginLeft: '10px'}}>{inviteText}</button>
           </div>

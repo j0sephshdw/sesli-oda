@@ -11,15 +11,20 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState(''); // YENİ: Başarı bildirim state'i
   const [shake, setShake] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const triggerError = (msg) => {
-    setError(msg); setShake(true); setTimeout(() => setShake(false), 500);
+    setSuccessMsg(''); setError(msg); setShake(true); setTimeout(() => setShake(false), 500);
+  };
+
+  const triggerSuccess = (msg) => {
+    setError(''); setSuccessMsg(msg);
   };
 
   const handleRegister = async (e) => {
-    e.preventDefault(); setError(''); setLoading(true);
+    e.preventDefault(); setError(''); setSuccessMsg(''); setLoading(true);
     try {
       const res = await fetch('/api/register', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -27,14 +32,15 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      alert('Kayıt Başarılı! Google Firebase üzerinden e-posta adresinize bir onay linki gönderildi. Lütfen mailinize gidip linke tıklayın.');
+      
+      triggerSuccess('Kayıt Başarılı! E-posta adresinize bir onay linki gönderildi. Lütfen mailinize gidip linke tıklayın.');
       setAuthMode('verify');
     } catch (err) { triggerError(err.message); } finally { setLoading(false); }
   };
 
   const handleResendLink = async () => {
-    if (!password) return alert("Güvenlik nedeniyle şifrenizi girmeniz gerekmektedir.");
-    setError(''); setLoading(true);
+    if (!password) return triggerError("Güvenlik nedeniyle şifrenizi girmeniz gerekmektedir.");
+    setError(''); setSuccessMsg(''); setLoading(true);
     try {
       const res = await fetch('/api/resend-code', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -42,12 +48,13 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      alert('Yeni onay linki e-postanıza başarıyla gönderildi! (Gereksiz/Spam klasörünü kontrol etmeyi unutmayın)');
+      
+      triggerSuccess('Yeni onay linki başarıyla gönderildi! (Spam klasörünü kontrol etmeyi unutmayın)');
     } catch (err) { triggerError(err.message); } finally { setLoading(false); }
   };
 
   const handleLogin = async (e) => {
-    e.preventDefault(); setError(''); setLoading(true);
+    e.preventDefault(); setError(''); setSuccessMsg(''); setLoading(true);
     try {
       const res = await fetch('/api/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -83,7 +90,7 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
   const handleResetPassword = async (e) => {
     e.preventDefault();
     if (!email) return triggerError('Lütfen e-posta adresinizi girin.');
-    setError(''); setLoading(true);
+    setError(''); setSuccessMsg(''); setLoading(true);
     try {
       const res = await fetch('/api/reset-password', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -91,7 +98,8 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      alert('Şifre sıfırlama bağlantısı e-postanıza gönderildi! Lütfen kontrol edin.');
+      
+      triggerSuccess('Şifre sıfırlama bağlantısı e-postanıza gönderildi! Lütfen kontrol edin.');
       setAuthMode('login');
     } catch (err) { triggerError(err.message); } finally { setLoading(false); }
   };
@@ -102,7 +110,7 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
         <div className={`premium-auth-card ${shake ? 'shake' : ''}`}>
           <div className="auth-header">
             <h2>Şifremi Unuttum</h2>
-            <p style={{marginTop: '10px'}}>Kayıtlı e-posta adresinizi girin, size bir sıfırlama bağlantısı gönderelim.</p>
+            <p style={{marginTop: '10px'}}>Kayıtlı e-posta adresinizi girin, sıfırlama bağlantısı gönderelim.</p>
           </div>
           {error && <div className="auth-error">{error}</div>}
           <form onSubmit={handleResetPassword}>
@@ -115,7 +123,7 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
             </button>
           </form>
           <div className="auth-footer-links" style={{marginTop: '20px'}}>
-             <a onClick={() => {setAuthMode('login'); setError('');}} className="link-action">İptal ve Girişe Dön</a>
+             <a onClick={() => {setAuthMode('login'); setError(''); setSuccessMsg('');}} className="link-action">İptal ve Girişe Dön</a>
           </div>
         </div>
       </div>
@@ -127,12 +135,14 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
       <div className="premium-auth-wrapper">
         <div className={`premium-auth-card ${shake ? 'shake' : ''}`}>
           <div className="auth-header">
-            <h2>E-posta Doğrulaması Bekleniyor</h2>
+            <h2>Doğrulama Bekleniyor</h2>
             <p style={{marginTop: '10px'}}><b>{email}</b> adresinize bir onay linki yolladık.</p>
           </div>
           {error && <div className="auth-error">{error}</div>}
+          {successMsg && <div className="auth-success">{successMsg}</div>}
+          
           <div style={{ textAlign: 'center', marginBottom: '20px', color: '#949ba4', fontSize: '14px' }}>
-            Lütfen mailinize gidin, <b>gelen linke tıklayın</b> ve ardından aşağıdaki butona basarak giriş yapın.
+            Lütfen mailinize gidin, <b>gelen linke tıklayın</b> ve ardından giriş yapın.
           </div>
           <form onSubmit={handleLogin}>
             <div className="premium-form-group">
@@ -145,7 +155,7 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
           </form>
           <div className="auth-footer-links" style={{marginTop: '20px'}}>
              <a onClick={handleResendLink} className="link-action" style={{marginBottom: '10px', color: '#57F287'}}>Linki Tekrar Gönder</a>
-             <a onClick={() => {setAuthMode('login'); setError('');}} className="link-action">İptal ve Girişe Dön</a>
+             <a onClick={() => {setAuthMode('login'); setError(''); setSuccessMsg('');}} className="link-action">İptal ve Girişe Dön</a>
           </div>
         </div>
       </div>
@@ -161,6 +171,7 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
         </div>
 
         {error && <div className="auth-error">{error}</div>}
+        {successMsg && <div className="auth-success">{successMsg}</div>}
         
         <form onSubmit={authMode === 'login' ? handleLogin : authMode === 'register' ? handleRegister : handleGuestJoin}>
           {authMode === 'register' && (
@@ -213,20 +224,20 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
         <div className="auth-footer-links">
           {authMode === 'login' ? (
             <>
-              <a onClick={() => {setAuthMode('forgot-password'); setError('');}} className="link-action" style={{marginBottom: '5px', color: '#e6a00f'}}>Şifremi Unuttum</a>
+              <a onClick={() => {setAuthMode('forgot-password'); setError(''); setSuccessMsg('');}} className="link-action" style={{marginBottom: '5px', color: '#e6a00f'}}>Şifremi Unuttum</a>
               <span className="text-muted">Hesabın yok mu? </span>
-              <a onClick={() => {setAuthMode('register'); setError('');}} className="link-action">Kayıt Ol</a>
+              <a onClick={() => {setAuthMode('register'); setError(''); setSuccessMsg('');}} className="link-action">Kayıt Ol</a>
               <div className="divider">veya</div>
-              <a onClick={() => {setAuthMode('guest'); setError('');}} className="link-action guest-link">Kayıt olmadan misafir olarak gir</a>
+              <a onClick={() => {setAuthMode('guest'); setError(''); setSuccessMsg('');}} className="link-action guest-link">Kayıt olmadan misafir olarak gir</a>
             </>
           ) : authMode === 'register' ? (
             <>
-              <a onClick={() => {setAuthMode('login'); setError('');}} className="link-action">Zaten bir hesabın var mı?</a>
+              <a onClick={() => {setAuthMode('login'); setError(''); setSuccessMsg('');}} className="link-action">Zaten bir hesabın var mı?</a>
               <div className="divider">veya</div>
-              <a onClick={() => {setAuthMode('guest'); setError('');}} className="link-action guest-link">Kayıt olmadan misafir olarak gir</a>
+              <a onClick={() => {setAuthMode('guest'); setError(''); setSuccessMsg('');}} className="link-action guest-link">Kayıt olmadan misafir olarak gir</a>
             </>
           ) : (
-            <a onClick={() => {setAuthMode('login'); setError('');}} className="link-action">Geri Dön ve Giriş Yap</a>
+            <a onClick={() => {setAuthMode('login'); setError(''); setSuccessMsg('');}} className="link-action">Geri Dön ve Giriş Yap</a>
           )}
         </div>
       </div>

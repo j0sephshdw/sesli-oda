@@ -1643,3 +1643,57 @@ body {
         opacity: 1;
     }
 }
+/* ==========================================================================
+   22. PERFECT POLISH (Başarı Toast'ları, Badge'ler ve Scroll Butonu)
+   ========================================================================== */
+
+.auth-success {
+    background: rgba(35, 165, 90, 0.2);
+    color: #57F287;
+    border: 1px solid #23a55a;
+    padding: 12px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    font-size: 13px;
+    text-align: center;
+    font-weight: bold;
+    animation: popIn 0.3s ease-out;
+}
+
+.unread-badge {
+    background: #da373c;
+    color: white;
+    border-radius: 12px;
+    padding: 2px 6px;
+    font-size: 11px;
+    font-weight: bold;
+    margin-left: 6px;
+    animation: popIn 0.3s ease;
+    box-shadow: 0 0 8px rgba(218, 55, 60, 0.6);
+}
+
+.scroll-bottom-btn {
+    position: absolute;
+    bottom: 80px;
+    right: 20px;
+    background: #2b2d31;
+    color: #f2f3f5;
+    border: 1px solid #3f4147;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    z-index: 100;
+    transition: 0.2s;
+    font-size: 18px;
+    animation: popIn 0.2s ease-out;
+}
+
+    .scroll-bottom-btn:hover {
+        background: #3f4147;
+        transform: translateY(-2px);
+    }

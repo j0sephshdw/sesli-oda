@@ -28,7 +28,6 @@ const renderMessageText = (text = '', myDisplayName = '') => {
   });
 };
 
-// 🟡 AKILLI TARİH FORMATLAMA (Smart Timestamps)
 const formatSmartTime = (timestamp) => {
   if (!timestamp) return '';
   const date = new Date(timestamp);
@@ -50,7 +49,8 @@ const formatSmartTime = (timestamp) => {
 export default function RoomChat({ roomName, myDisplayName = '', dbMessages = [], activeTypers = [], room }) {
   const { send, chatMessages } = useChat();
   const [msg, setMsg] = useState('');
-  const [copiedId, setCopiedId] = useState(null); // Kopyalama animasyonu için State
+  const [copiedId, setCopiedId] = useState(null);
+  const [showScrollBtn, setShowScrollBtn] = useState(false); // YENİ: Aşağı Kaydır Butonu State'i
   
   const chatEndRef = useRef(null);
   const containerRef = useRef(null);
@@ -67,6 +67,16 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
     const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120;
     if (isNearBottom) scrollToBottom('smooth');
   }, [chatMessages, dbMessages]);
+
+  const handleScroll = (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.target;
+    // Eğer en alttan 150px yukarıdaysak butonu göster
+    if (scrollHeight - scrollTop - clientHeight > 150) {
+      setShowScrollBtn(true);
+    } else {
+      setShowScrollBtn(false);
+    }
+  };
 
   const handleSendMessage = (e) => {
     if (e) e.preventDefault();
@@ -106,17 +116,17 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
     }
   };
 
-  // 🟡 ÇİFT TIKLAMA İLE MESAJ KOPYALAMA (Haptic Feedback)
   const handleCopyMessage = (text, id) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 1500); // 1.5 Saniye sonra "Kopyalandı" yazısı kaybolur
+    setTimeout(() => setCopiedId(null), 1500); 
   };
 
   return (
-    <div className="custom-chat-panel">
+    <div className="custom-chat-panel" style={{ position: 'relative' }}>
       <div className="chat-header">💬 Sohbet</div>
-      <div className="chat-messages" ref={containerRef}>
+      
+      <div className="chat-messages" ref={containerRef} onScroll={handleScroll}>
         <div className="chat-sys-msg" style={{marginBottom: '15px'}}>Oda geçmişi ve canlı mesajlar.<br/><small>Metni kopyalamak için mesaja çift tıklayın.</small></div>
 
         {dbMessages.map((m, idx) => {
@@ -156,6 +166,12 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
         })}
         <div ref={chatEndRef} />
       </div>
+
+      {showScrollBtn && (
+        <button className="scroll-bottom-btn" onClick={() => scrollToBottom('smooth')} title="En Alta İn">
+          ⬇️
+        </button>
+      )}
 
       {activeTypers.length > 0 && (
         <div className="typing-indicator">
