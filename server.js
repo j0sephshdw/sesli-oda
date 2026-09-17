@@ -111,7 +111,7 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-// 🟠 E-POSTA DOĞRULAMA (VERIFY-EMAIL) - YENİ ROUTE
+// 🟠 E-POSTA DOĞRULAMA (VERIFY-EMAIL)
 app.post('/api/verify-email', async (req, res) => {
   const { email, code } = req.body;
   if (!email || !code) return res.status(400).json({ error: 'E-posta ve doğrulama kodu zorunludur.' });
@@ -188,6 +188,45 @@ app.post('/api/login', async (req, res) => {
     res.json({ success: true, username: username });
   } catch (err) {
     res.status(500).json({ error: 'Giriş işlemi başarısız.' });
+  }
+});
+
+// 🔴 HESAP SİLME (DELETE ACCOUNT)
+app.delete('/api/delete-account', async (req, res) => {
+  const { username } = req.body;
+  
+  if (!username) {
+    return res.status(400).json({ error: 'Kullanıcı adı zorunludur.' });
+  }
+
+  try {
+    // 1. Kullanıcıyı Firestore'da bul
+    const userSnap = await db.collection('users').where('username', '==', username).limit(1).get();
+    
+    if (userSnap.empty) {
+      return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+    }
+
+    const userDoc = userSnap.docs[0];
+    const userData = userDoc.data();
+
+    // 2. Firebase Authentication'dan kullanıcıyı sil
+    if (userData.uid) {
+      try {
+        await auth.deleteUser(userData.uid);
+      } catch (authError) {
+        console.error("Auth'dan kullanıcı silinirken hata:", authError.message);
+        // Auth tarafında yoksa bile Firestore verisini silmek için devam ediyoruz.
+      }
+    }
+
+    // 3. Firestore'daki belgeyi sil
+    await userDoc.ref.delete();
+
+    res.json({ success: true, message: 'Hesap başarıyla silindi.' });
+  } catch (err) {
+    console.error("Hesap silme işlemi başarısız:", err);
+    res.status(500).json({ error: 'Hesap silinirken sunucu kaynaklı bir hata oluştu.' });
   }
 });
 
