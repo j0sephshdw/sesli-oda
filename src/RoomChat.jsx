@@ -5,7 +5,6 @@ const renderMessageText = (text = '', myDisplayName = '') => {
   if (!text) return null;
   const safeName = (myDisplayName || '').toLowerCase();
   
-  // 🟡 YENİ: Gelişmiş Çoklu Satır Kod Blokları (Markdown ```code```)
   const codeBlockParts = text.split(/(```[\s\S]*?```)/g);
   
   return codeBlockParts.map((block, blockIndex) => {
@@ -38,10 +37,10 @@ const renderMessageText = (text = '', myDisplayName = '') => {
       const renderedLine = parts.map((part, i) => {
         if (!part) return null;
         const spotifyMatch = part.match(/(?:https?:\/\/)?(?:open\.spotify\.com)\/(track|album|playlist|episode)\/([a-zA-Z0-9]+)/);
-        if (spotifyMatch) return (<div key={i} style={{marginTop: '8px', marginBottom: '8px'}}><iframe style={{borderRadius: '12px'}} src={`[https://open.spotify.com/embed/$](https://open.spotify.com/embed/$){spotifyMatch[1]}/${spotifyMatch[2]}?utm_source=generator&theme=0`} width="100%" height="152" frameBorder="0" allowFullScreen loading="lazy"></iframe></div>);
+        if (spotifyMatch) return (<div key={i} style={{marginTop: '8px', marginBottom: '8px'}}><iframe style={{borderRadius: '12px'}} src={`https://open.spotify.com/embed/${spotifyMatch[1]}/${spotifyMatch[2]}?utm_source=generator&theme=0`} width="100%" height="152" frameBorder="0" allowFullScreen loading="lazy"></iframe></div>);
 
         const ytMatch = part.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-        if (ytMatch) return (<div key={i} style={{marginTop: '8px', marginBottom: '8px'}}><a href={part} target="_blank" rel="noopener noreferrer" className="chat-link">{part}</a><iframe width="100%" height="200" src={`[https://www.youtube.com/embed/$](https://www.youtube.com/embed/$){ytMatch[1]}`} frameBorder="0" allowFullScreen style={{borderRadius: '8px', marginTop: '8px', border: '1px solid #3f4147'}}></iframe></div>);
+        if (ytMatch) return (<div key={i} style={{marginTop: '8px', marginBottom: '8px'}}><a href={part} target="_blank" rel="noopener noreferrer" className="chat-link">{part}</a><iframe width="100%" height="200" src={`https://www.youtube.com/embed/${ytMatch[1]}`} frameBorder="0" allowFullScreen style={{borderRadius: '8px', marginTop: '8px', border: '1px solid #3f4147'}}></iframe></div>);
 
         if (part.match(/^https?:\/\/[^\s]+(\.(jpg|jpeg|png|gif|webp))(\?.*)?$/i)) return <img key={i} src={part} alt="görsel" className="chat-image-preview" onClick={() => window.open(part, '_blank')} title="Tam boyutta aç"/>;
         if (part.match(/^https?:\/\/[^\s]+$/)) return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">{part}</a>;
@@ -115,6 +114,9 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
       if (command.startsWith('/roll')) { const roll = Math.floor(Math.random() * 100) + 1; trimmed = `🎲 Zarları yuvarladı ve **${roll}** attı!`; }
       else if (command.startsWith('/flip')) { const flip = Math.random() > 0.5 ? 'Yazı' : 'Tura'; trimmed = `🪙 Yazı tura attı: **${flip}**!`; }
       else if (command.startsWith('/shrug')) { trimmed = trimmed.replace('/shrug', '¯\\_(ツ)_/¯'); }
+      // 🟡 YENİ: Kedi Köpek Komutları
+      else if (command.startsWith('/cat')) { trimmed = `🐈 Süpriz!\nhttps://cataas.com/cat?t=${Date.now()}.png`; }
+      else if (command.startsWith('/dog')) { trimmed = `🐕 Hav!\nhttps://dog.ceo/api/breeds/image/random`; }
     }
 
     let finalMessage = trimmed;
@@ -209,7 +211,6 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
         </div>
       )}
 
-      {/* 🟡 YENİ: Zengin Avatar "Yazıyor..." Animasyonu */}
       {activeTypers.length > 0 && (
         <div className="typing-indicator-rich">
           {activeTypers.map(t => (
@@ -230,7 +231,7 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
         )}
         
         <form className="chat-input-area" onSubmit={handleSendMessage} style={{ alignItems: 'flex-end', borderTop: replyTo ? 'none' : '1px solid #1e1f22' }}>
-          <textarea ref={textareaRef} value={msg} onChange={handleInputChange} onKeyDown={handleKeyDown} placeholder="Mesaj... (```kod```, /roll, ||gizli||)" rows={1}
+          <textarea ref={textareaRef} value={msg} onChange={handleInputChange} onKeyDown={handleKeyDown} placeholder="Mesaj... (```kod```, /cat, ||gizli||)" rows={1}
             style={{ flex: 1, padding: '12px', borderRadius: '6px', border: 'none', backgroundColor: '#1e1f22', color: 'white', outline: 'none', resize: 'none', overflowY: 'auto', fontFamily: 'inherit', fontSize: '14px', lineHeight: '1.4', minHeight: '44px', maxHeight: '120px', transition: 'border 0.2s' }}
           />
           <button type="submit" disabled={!msg.trim()} style={{ height: '44px' }}>Gönder</button>

@@ -57,6 +57,30 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   const prevChatCount = useRef(0);
   const myDisplayName = (localParticipant?.name || localParticipant?.identity || '').split('_')[0];
 
+  // 🟡 YENİ: Rich Presence (Arkadaşlara Hangi Odada Olduğunu Söyle)
+  useEffect(() => {
+    if (!myDisplayName) return;
+    
+    const setPresence = (currentRoomName) => {
+      fetch(`/api/users/${myDisplayName}/status`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentRoom: currentRoomName })
+      }).catch(() => {});
+    };
+
+    // Odaya girince bildir
+    setPresence(roomName);
+
+    // Pencere kapanırsa veya çıkarsa temizle
+    const handleUnload = () => setPresence(null);
+    window.addEventListener('beforeunload', handleUnload);
+
+    return () => {
+      setPresence(null);
+      window.removeEventListener('beforeunload', handleUnload);
+    };
+  }, [roomName, myDisplayName]);
+
   useEffect(() => {
     let isMounted = true;
     fetch(`/api/chat/${roomName}`)
@@ -195,14 +219,12 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
     }
   };
 
-  // 🟡 YENİ: Tarayıcı bildirim izni iste
   useEffect(() => {
     if (Notification.permission === 'default') {
       Notification.requestPermission();
     }
   }, []);
 
-  // Unread Badge ve Masaüstü Bildirimi Kontrolü
   useEffect(() => {
     if (chatMessages.length > prevChatCount.current) {
       const lastMsg = chatMessages[chatMessages.length - 1];
@@ -217,7 +239,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
         
         if (!isChatVisible) setUnreadCount(prev => prev + 1);
 
-        // Sekme arka plandaysa bildirim gönder
         if (document.hidden && Notification.permission === 'granted') {
            new Notification(`Sesli Oda: ${senderName}`, { 
                body: lastMsg.message,

@@ -2,6 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 
 const COLOR_PALETTE = ['#5865F2', '#57F287', '#FEE75C', '#EB459E', '#ED4245', '#00a8fc', '#9b59b6', '#e67e22', '#1abc9c', '#34495e'];
 
+// 🟡 YENİ: Durum Seçenekleri
+const STATUS_OPTIONS = [
+  { icon: '', text: 'Durum Yok' },
+  { icon: '🎮', text: 'Oyun Oynuyor' },
+  { icon: '🎧', text: 'Müzik Dinliyor' },
+  { icon: '💻', text: 'Kod Yazıyor' },
+  { icon: '⛔', text: 'Rahatsız Etmeyin' },
+  { icon: '🌙', text: 'Uykuda' }
+];
+
 export default function Dashboard({ username, myRooms, onLogout, onJoinRoom }) {
   const [activeTab, setActiveTab] = useState('rooms'); 
   const [targetRoom, setTargetRoom] = useState('');
@@ -9,25 +19,24 @@ export default function Dashboard({ username, myRooms, onLogout, onJoinRoom }) {
   const [showPassword, setShowPassword] = useState(false);
   
   const [profile, setProfile] = useState({ 
-    friendsDetail: [], friendsList: [], friendRequests: [], sentRequests: [], bio: '', color: '#5865F2', unreadDMs: {} 
+    friendsDetail: [], friendsList: [], friendRequests: [], sentRequests: [], bio: '', color: '#5865F2', unreadDMs: {}, customStatus: '' 
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   
   const [editBio, setEditBio] = useState('');
   const [editColor, setEditColor] = useState('');
+  const [editStatus, setEditStatus] = useState(''); // 🟡 YENİ: Custom Status State
+  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [shake, setShake] = useState(false);
 
-  // 🟡 YENİ: Ctrl + K (Command Palette) State'leri
   const [showCmdK, setShowCmdK] = useState(false);
   const [cmdKQuery, setCmdKQuery] = useState('');
   const cmdKInputRef = useRef(null);
-  const prevUnreadCount = useRef(0);
 
-  // Ctrl+K veya Cmd+K Dinleyicisi
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -73,7 +82,8 @@ export default function Dashboard({ username, myRooms, onLogout, onJoinRoom }) {
           return {
             friendsDetail: data.friendsDetail || [], friendsList: data.friendsList || [],
             friendRequests: data.friendRequests || [], sentRequests: data.sentRequests || [],
-            bio: data.bio || '', color: data.color || '#5865F2', unreadDMs: data.unreadDMs || {}
+            bio: data.bio || '', color: data.color || '#5865F2', unreadDMs: data.unreadDMs || {},
+            customStatus: data.customStatus || ''
           };
         });
       }
@@ -82,8 +92,8 @@ export default function Dashboard({ username, myRooms, onLogout, onJoinRoom }) {
 
   useEffect(() => {
     if (Notification.permission === 'default') Notification.requestPermission();
-    setEditBio(profile.bio); setEditColor(profile.color);
-  }, [profile.bio, profile.color]);
+    setEditBio(profile.bio); setEditColor(profile.color); setEditStatus(profile.customStatus);
+  }, [profile.bio, profile.color, profile.customStatus]);
 
   useEffect(() => {
     fetchProfile();
@@ -121,7 +131,8 @@ export default function Dashboard({ username, myRooms, onLogout, onJoinRoom }) {
   const handleSaveProfile = async (e) => {
     e.preventDefault(); setLoading(true); setError(''); setSuccess('');
     try {
-      const res = await fetch(`/api/users/${username}/profile`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bio: editBio, color: editColor }) });
+      // 🟡 YENİ: customStatus update API call eklendi
+      const res = await fetch(`/api/users/${username}/profile`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bio: editBio, color: editColor, customStatus: editStatus }) });
       if (!res.ok) throw new Error("Profil güncellenemedi.");
       triggerNotify('Profil başarıyla güncellendi!', false); fetchProfile();
     } catch (err) { triggerNotify(err.message); } finally { setLoading(false); }
@@ -169,7 +180,6 @@ export default function Dashboard({ username, myRooms, onLogout, onJoinRoom }) {
   const sortedFriends = [...profile.friendsDetail].sort((a, b) => (b.isOnline === a.isOnline ? 0 : b.isOnline ? 1 : -1));
   const totalUnreadDMs = Object.values(profile.unreadDMs || {}).reduce((a, b) => a + b, 0);
 
-  // Ctrl+K Arama Sonuçları Filtreleme
   const cmdKResults = [
     ...myRooms.filter(r => r.toLowerCase().includes(cmdKQuery.toLowerCase())).map(r => ({ type: 'room', name: r })),
     ...profile.friendsList.filter(f => f.toLowerCase().includes(cmdKQuery.toLowerCase())).map(f => ({ type: 'friend', name: f }))
@@ -178,7 +188,6 @@ export default function Dashboard({ username, myRooms, onLogout, onJoinRoom }) {
   return (
     <div className="dashboard-container">
       
-      {/* 🟡 YENİ: Ctrl+K Modal Overlay */}
       {showCmdK && (
         <div className="cmd-k-overlay" onClick={() => setShowCmdK(false)}>
           <div className="cmd-k-modal" onClick={e => e.stopPropagation()}>
@@ -207,7 +216,8 @@ export default function Dashboard({ username, myRooms, onLogout, onJoinRoom }) {
              {username.charAt(0).toUpperCase()}
           </div>
           <h3 style={{marginBottom: '5px'}}>{username}</h3>
-          {profile.bio && <span style={{fontSize: '11px', color: '#949ba4', textAlign: 'center', padding: '0 10px'}}>{profile.bio}</span>}
+          {/* 🟡 YENİ: Özel Durum (Custom Status) Sidebar Render */}
+          {profile.customStatus && <span className="custom-status-badge">{profile.customStatus}</span>}
         </div>
         
         <div className="nav-menu">
@@ -237,6 +247,19 @@ export default function Dashboard({ username, myRooms, onLogout, onJoinRoom }) {
             <h2>👤 Profil Ayarları</h2>
             <div className="social-section">
               <form onSubmit={handleSaveProfile}>
+                
+                {/* 🟡 YENİ: Custom Status Dropdown Seçici */}
+                <div className="premium-form-group">
+                   <label>ÖZEL DURUM (STATUS)</label>
+                   <select value={editStatus} onChange={(e) => setEditStatus(e.target.value)} className="status-select">
+                      {STATUS_OPTIONS.map(opt => (
+                         <option key={opt.text} value={opt.icon ? `${opt.icon} ${opt.text}` : ''}>
+                           {opt.icon} {opt.text}
+                         </option>
+                      ))}
+                   </select>
+                </div>
+
                 <div className="premium-form-group">
                   <label>HAKKIMDA (BİO)</label>
                   <textarea value={editBio} onChange={(e) => setEditBio(e.target.value)} maxLength={100} placeholder="Kendinizden bahsedin..." style={{padding: '12px', borderRadius: '8px', background: '#1e1f22', border: '1px solid #3f4147', color: 'white', resize: 'none', height: '80px', fontFamily: 'inherit'}} />
@@ -318,14 +341,23 @@ export default function Dashboard({ username, myRooms, onLogout, onJoinRoom }) {
                              <div className={`online-dot ${friend.isOnline ? 'online' : 'offline'}`} title={friend.isOnline ? 'Çevrimiçi' : 'Çevrimdışı'}></div>
                           </div>
                           <div className="friend-details">
-                             <span className="friend-name">{friend.username}</span>
+                             <span className="friend-name">{friend.username} {friend.customStatus && <span className="custom-status-tiny">{friend.customStatus}</span>}</span>
                              <span className="friend-bio" title={friend.bio}>{friend.bio}</span>
                           </div>
                         </div>
-                        <button onClick={() => handleDirectMessage(friend.username)} className="premium-submit-btn dm-btn" style={{position: 'relative'}}>
-                          💬 Mesajlaş
-                          {unreadForThisFriend > 0 && <span className="unread-badge" style={{position: 'absolute', top: '-8px', right: '-8px'}}>{unreadForThisFriend}</span>}
-                        </button>
+                        
+                        <div className="friend-card-actions">
+                          {/* 🟡 YENİ: Rich Presence - Odada İse Yanına Git Butonu */}
+                          {friend.isOnline && friend.currentRoom && !friend.currentRoom.startsWith('DM_') && (
+                            <button onClick={() => handleJoin(null, friend.currentRoom)} className="presence-join-btn" title={`${friend.currentRoom} odasına katıl`}>
+                              🔊 Yanına Git
+                            </button>
+                          )}
+                          <button onClick={() => handleDirectMessage(friend.username)} className="premium-submit-btn dm-btn" style={{position: 'relative', margin: 0}}>
+                            💬 Mesajlaş
+                            {unreadForThisFriend > 0 && <span className="unread-badge" style={{position: 'absolute', top: '-8px', right: '-8px'}}>{unreadForThisFriend}</span>}
+                          </button>
+                        </div>
                       </li>
                     );
                   })}

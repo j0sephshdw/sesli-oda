@@ -53,7 +53,7 @@ const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET;
 const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY;
 
 // ==========================================
-// KİMLİK DOĞRULAMA & PROFİL ROUTE'LARI
+// KİMLİK DOĞRULAMA ROUTE'LARI
 // ==========================================
 
 app.post('/api/register', async (req, res) => {
@@ -69,8 +69,8 @@ app.post('/api/register', async (req, res) => {
     await db.collection('users').doc(userRecord.uid).set({
       uid: userRecord.uid, email, username, createdAt: FieldValue.serverTimestamp(), 
       lastActive: FieldValue.serverTimestamp(),
-      rooms: [], friends: [], friendRequests: [], sentRequests: [], unreadDMs: {}, // 🟡 YENİ: Okunmamış mesaj haritası
-      bio: 'Merhaba! Ben Sesli Oda kullanıyorum.', color: '#5865F2'
+      rooms: [], friends: [], friendRequests: [], sentRequests: [], unreadDMs: {}, 
+      bio: 'Merhaba! Ben Sesli Oda kullanıyorum.', color: '#5865F2', customStatus: ''
     });
 
     const loginRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, {
@@ -166,6 +166,25 @@ app.delete('/api/delete-account', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ==========================================
+// SOSYAL AĞ & PROFİL ROUTE'LARI
+// ==========================================
+
+// 🟡 YENİ: Arkadaşım Nerede? (Rich Presence Durum Güncellemesi)
+app.post('/api/users/:username/status', async (req, res) => {
+  const { currentRoom } = req.body;
+  try {
+    const snap = await db.collection('users').where('username', '==', req.params.username).limit(1).get();
+    if (!snap.empty) {
+      await snap.docs[0].ref.update({ 
+        currentRoom: currentRoom || null,
+        lastActive: FieldValue.serverTimestamp()
+      });
+    }
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/users/:username/profile', async (req, res) => {
   try {
     const snap = await db.collection('users').where('username', '==', req.params.username).limit(1).get();
@@ -190,7 +209,14 @@ app.get('/api/users/:username/profile', async (req, res) => {
           if (fd.lastActive && typeof fd.lastActive.toDate === 'function') {
              isOnline = (Date.now() - fd.lastActive.toDate().getTime()) < 120000;
           }
-          return { username: fd.username, bio: fd.bio || '', color: fd.color || '#5865F2', isOnline };
+          return { 
+            username: fd.username, 
+            bio: fd.bio || '', 
+            color: fd.color || '#5865F2', 
+            isOnline,
+            customStatus: fd.customStatus || '', // 🟡 EKLENDİ
+            currentRoom: fd.currentRoom || null  // 🟡 EKLENDİ
+          };
        }).filter(Boolean);
     }
 
@@ -200,19 +226,27 @@ app.get('/api/users/:username/profile', async (req, res) => {
       friendsDetail: friendsDetail,
       friendRequests: data.friendRequests || [],
       sentRequests: data.sentRequests || [],
-      unreadDMs: data.unreadDMs || {}, // 🟡 YENİ: Okunmamış mesaj verisi Frontend'e gidiyor
+      unreadDMs: data.unreadDMs || {}, 
       bio: data.bio || '',
-      color: data.color || '#5865F2'
+      color: data.color || '#5865F2',
+      customStatus: data.customStatus || ''
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.put('/api/users/:username/profile', async (req, res) => {
-  const { bio, color } = req.body;
+  const { bio, color, customStatus } = req.body;
   try {
     const snap = await db.collection('users').where('username', '==', req.params.username).limit(1).get();
     if (snap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
-    await snap.docs[0].ref.update({ bio: bio.substring(0, 100), color: color || '#5865F2' });
+    
+    const updateData = { 
+      bio: bio.substring(0, 100), 
+      color: color || '#5865F2' 
+    };
+    if (customStatus !== undefined) updateData.customStatus = customStatus;
+
+    await snap.docs[0].ref.update(updateData);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -266,6 +300,15 @@ app.post('/api/friends/respond', async (req, res) => {
 // LIVEKIT VE ODA ROUTE'LARI
 // ==========================================
 
+// 🟢 KRİTİK DÜZELTME: Kaybolan "Geçmiş Odalarım" Rotası Geri Getirildi!
+app.get('/api/rooms/:username', async (req, res) => {
+  try {
+    const snap = await db.collection('users').where('username', '==', req.params.username).limit(1).get();
+    if (snap.empty) return res.json({ rooms: [] });
+    res.json({ rooms: snap.docs[0].data().rooms || [] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/api/token', async (req, res) => {
   const { roomName, participantName, password, isGuest } = req.body;
   if (!roomName || !participantName) return res.status(400).json({ error: 'Oda ve kullanıcı adı zorunlu.' });
@@ -290,7 +333,6 @@ app.post('/api/token', async (req, res) => {
       }
     }
 
-    // 🟡 YENİ: DM Odasına girildiğinde okunmamış mesajları sıfırla (Okundu İşareti)
     if (roomName.startsWith('DM_')) {
       const friendName = roomName.replace('DM_', '').split('-').find(u => u !== participantName);
       const userSnap = await db.collection('users').where('username', '==', participantName).limit(1).get();
@@ -312,7 +354,6 @@ app.post('/api/chat', async (req, res) => {
   try {
     await db.collection('rooms').doc(roomName).collection('messages').add({ sender, message, timestamp });
 
-    // 🟡 YENİ: DM odasına atılan mesaj, hedef kişinin "Okunmamış" sayacını artırır
     if (roomName.startsWith('DM_')) {
       const targetUser = roomName.replace('DM_', '').split('-').find(u => u !== sender);
       if (targetUser) {
