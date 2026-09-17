@@ -2,13 +2,16 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { AccessToken } from 'livekit-server-sdk';
-import admin from 'firebase-admin';
+import firebaseAdmin from 'firebase-admin';
 import { readFileSync, existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// ES Module ortamında Firebase Admin uyumluluk köprüsü
+const admin = firebaseAdmin.default || firebaseAdmin;
 
 dotenv.config();
 
@@ -34,7 +37,7 @@ try {
   console.log("Firebase Admin başarıyla başlatıldı.");
 } catch (error) {
   console.error("KRİTİK HATA: Firebase bağlantısı kurulamadı!", error.message);
-  process.exit(1); // Sunucuyu anında durdurur, zincirleme çökmeleri engeller
+  process.exit(1); 
 }
 
 const auth = admin.auth();
