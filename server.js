@@ -55,17 +55,14 @@ const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY;
 app.post('/api/register', async (req, res) => {
   const { email, username, password } = req.body;
   if (!email || !username || !password) return res.status(400).json({ error: 'E-posta, kullanıcı adı ve şifre zorunludur.' });
-  if (username.length < 3 || username.length > 20) return res.status(400).json({ error: 'Kullanıcı adı 3 ile 20 karakter arasında olmalıdır.' });
-  if (password.length < 6) return res.status(400).json({ error: 'Şifre en az 6 karakter olmalıdır.' });
 
   try {
     const usernameCheck = await db.collection('users').where('username', '==', username).get();
     if (!usernameCheck.empty) return res.status(400).json({ error: 'Bu kullanıcı adı zaten kullanımda.' });
 
-    // Firebase Authentication'da kullanıcı oluşturma
+    // Firebase Auth kullanıcısını oluştur
     const userRecord = await auth.createUser({ email, password, displayName: username });
 
-    // Veritabanına başlangıç kaydını ekleme
     await db.collection('users').doc(userRecord.uid).set({
       uid: userRecord.uid,
       email,
@@ -74,61 +71,70 @@ app.post('/api/register', async (req, res) => {
       rooms: []
     });
 
-    // Firebase REST API ile kullanıcıya anında Doğrulama Linki E-postası gönderme
-    if (!FIREBASE_WEB_API_KEY) throw new Error("FIREBASE_WEB_API_KEY eksik!");
+    // Firebase üzerinden onay maili tetikle
+    const loginRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, returnSecureToken: true }),
+    });
+    const loginData = await loginRes.json();
 
-    const verifyEmailRes = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requestType: "VERIFY_EMAIL",
-          idToken: await getFirebaseIdToken(email, password) // Firebase sistemine özel geçici giriş token'ı
-        }),
-      }
-    );
-
-    if (!verifyEmailRes.ok) {
-       console.error("Firebase Mail Hatası:", await verifyEmailRes.text());
-       return res.status(500).json({ error: 'Hesap oluşturuldu ancak onay e-postası gönderilemedi.' });
+    if (!loginRes.ok) {
+      console.error("Firebase Login Hatası:", loginData);
+      throw new Error(loginData.error?.message || "Doğrulama token'ı alınamadı.");
     }
 
-    res.json({ success: true, message: 'Kayıt başarılı! Lütfen e-postanıza gelen linke tıklayarak hesabınızı onaylayın.' });
+    const oobRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestType: "VERIFY_EMAIL", idToken: loginData.idToken }),
+    });
+    const oobData = await oobRes.json();
+
+    if (!oobRes.ok) {
+      console.error("Firebase sendOobCode Hatası:", oobData);
+      throw new Error(oobData.error?.message || "Onay maili gönderilemedi.");
+    }
+
+    res.json({ success: true, message: 'Kayıt başarılı! Lütfen gelen kutunuzdaki onay linkine tıklayın.' });
   } catch (err) {
+    console.error("Kayıt Hatası Detayı:", err.message);
     res.status(400).json({ error: err.message });
   }
 });
 
-// Yardımcı Fonksiyon: Firebase REST API'den geçici idToken alma (Mail atabilmek için gereklidir)
-async function getFirebaseIdToken(email, password) {
-  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, returnSecureToken: true }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error.message);
-  return data.idToken;
-}
-
-// 🟡 KODU TEKRAR GÖNDER (RESEND-LINK)
+// 🟡 LİNKİ TEKRAR GÖNDER (RESEND)
 app.post('/api/resend-code', async (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'E-posta ve şifrenizi girmelisiniz.' });
+  if (!email || !password) return res.status(400).json({ error: 'Şifrenizi girmelisiniz.' });
 
   try {
-    const idToken = await getFirebaseIdToken(email, password);
-    const verifyEmailRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`, {
+    const loginRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestType: "VERIFY_EMAIL", idToken }),
+      body: JSON.stringify({ email, password, returnSecureToken: true }),
+    });
+    const loginData = await loginRes.json();
+
+    if (!loginRes.ok) {
+      return res.status(401).json({ error: 'Şifreniz hatalı, lütfen tekrar deneyin.' });
+    }
+
+    const oobRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestType: "VERIFY_EMAIL", idToken: loginData.idToken }),
     });
 
-    if (!verifyEmailRes.ok) throw new Error("Mail tekrar gönderilemedi.");
+    if (!oobRes.ok) {
+      const oobData = await oobRes.json();
+      throw new Error(oobData.error?.message || "Mail gönderilemedi.");
+    }
+
     res.json({ success: true, message: 'Yeni onay linki e-postanıza gönderildi.' });
   } catch (err) {
-    res.status(500).json({ error: 'Giriş bilgileriniz hatalı veya sistemde sorun var.' });
+    console.error("Resend Hatası Detayı:", err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
