@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { LiveKitRoom } from '@livekit/components-react';
-import { Track } from 'livekit-client';
 import AudioRoom from './AudioRoom';
 import '@livekit/components-styles';
+import './index.css'; // Sadece index.css kullanıyoruz
 
 const LIVEKIT_URL = 'wss://bizim-dc-x3m53dz5.livekit.cloud';
 
@@ -42,7 +42,9 @@ export default function App() {
       const res = await fetch(`/api/rooms/${user}`);
       const data = await res.json();
       if (data.rooms) setMyRooms(data.rooms);
-    } catch (err) {}
+    } catch (err) {
+      console.error("Geçmiş odalar çekilemedi:", err);
+    }
   };
 
   const triggerError = (msg) => {
@@ -178,7 +180,12 @@ export default function App() {
               </div>
               <div className="premium-form-group">
                 <label>ODA ŞİFRESİ</label>
-                <input type="password" value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} placeholder="Gizli Şifre (İsteğe bağlı)" />
+                <div className="password-wrapper">
+                  <input type={showPassword ? "text" : "password"} value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} placeholder="Gizli Şifre (İsteğe bağlı)" />
+                  <button type="button" className="eye-btn" onClick={() => setShowPassword(!showPassword)}>
+                    {showPassword ? '🙈' : '👁️'}
+                  </button>
+                </div>
               </div>
               <button type="submit" disabled={loading} className="premium-submit-btn">
                 {loading ? 'Bağlanılıyor...' : 'Odaya Gir'}
@@ -230,7 +237,6 @@ export default function App() {
                   {showPassword ? '🙈' : '👁️'}
                 </button>
               </div>
-              {authMode === 'login' && <span className="forgot-password">Şifreni mi unuttun?</span>}
             </div>
           )}
 

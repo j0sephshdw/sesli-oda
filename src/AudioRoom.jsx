@@ -54,7 +54,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   const { send, chatMessages } = useChat();
   const [msg, setMsg] = useState('');
   
-  // VERİTABANI GEÇMİŞ MESAJLARI (EKSİKSİZ EKLENDİ)
   const [dbMessages, setDbMessages] = useState([]);
   
   const chatEndRef = useRef(null);
@@ -82,7 +81,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   const [pinnedParticipantId, setPinnedParticipantId] = useState(null);
   const [isBlurred, setIsBlurred] = useState(false);
   
-  // ODA SÜRESİ (UPTIME SAYACI EKSİKSİZ EKLENDİ)
   const [uptime, setUptime] = useState(0);
 
   const processorRef = useRef(null);
@@ -91,16 +89,15 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   const prevChatCount = useRef(0);
   const myDisplayName = (localParticipant?.name || localParticipant?.identity || '').split('_')[0];
 
-  // 1. ODA GEÇMİŞİNİ VERİTABANINDAN ÇEK (DB MESSAGES)
   useEffect(() => {
     fetch(`/api/chat/${roomName}`)
       .then(res => res.json())
       .then(data => {
         if (data.messages) setDbMessages(data.messages);
-      });
+      })
+      .catch(err => console.error("Geçmiş mesajlar yüklenemedi:", err));
   }, [roomName]);
 
-  // 2. ZAMANLAYICI (UPTIME)
   useEffect(() => {
     const timer = setInterval(() => setUptime(prev => prev + 1), 1000);
     return () => clearInterval(timer);
@@ -113,7 +110,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
     return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
   };
 
-  // 3. SİNEMATİK MOD (IDLE TRACKER)
   useEffect(() => {
     let timeout;
     const handleMouseMove = () => {
@@ -287,16 +283,14 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
     } catch(e) {}
   };
 
-  // 4. MESAJ GÖNDERME (HEM LIVEKIT HEM DB)
   const handleSendMessage = () => {
     if (msg.trim()) {
       send(msg);
-      // Backend veritabanına kaydet
       fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roomName, sender: myDisplayName, message: msg, timestamp: Date.now() })
-      });
+      }).catch(err => console.error("Mesaj kaydedilemedi:", err));
       setMsg('');
     }
   };
@@ -785,7 +779,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
           <div className="chat-messages">
             <div className="chat-sys-msg">Oda geçmişi ve canlı mesajlar.</div>
             
-            {/* 1. ÖNCE VERİTABANINDAKİ ESKİ MESAJLARI DİZ */}
             {dbMessages.map((m, idx) => {
                const isMentioned = m.message.toLowerCase().includes(`@${myDisplayName.toLowerCase()}`);
                return (
@@ -799,7 +792,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
                )
             })}
 
-            {/* 2. SONRA O AN ATILAN CANLI MESAJLARI DİZ */}
             {chatMessages.map(m => {
               const isMentioned = m.message.toLowerCase().includes(`@${myDisplayName.toLowerCase()}`);
               return (
