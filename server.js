@@ -77,13 +77,9 @@ app.post('/api/register', async (req, res) => {
     const usernameCheck = await db.collection('users').where('username', '==', username).get();
     if (!usernameCheck.empty) return res.status(400).json({ error: 'Bu kullanıcı adı zaten kullanımda.' });
 
-    // Firebase'de Kullanıcı Oluşturma
     const userRecord = await auth.createUser({ email, password, displayName: username });
-    
-    // 6 Haneli Rastgele Doğrulama Kodu Üretme
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Veritabanına isVerified: false olarak kaydetme
     await db.collection('users').doc(userRecord.uid).set({
       uid: userRecord.uid,
       email,
@@ -94,7 +90,6 @@ app.post('/api/register', async (req, res) => {
       rooms: []
     });
 
-    // 🔴 KRİTİK GÜNCELLEME: Profesyonel HTML Şablonu ve SMTP Hata Yakalama (Rollback)
     if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
       try {
         await transporter.sendMail({
@@ -119,19 +114,15 @@ app.post('/api/register', async (req, res) => {
         console.log(`[BAŞARILI] ${email} adresine doğrulama maili gönderildi.`);
       } catch (mailError) {
         console.error("[NODEMAILER HATASI]: E-posta gönderilemedi -", mailError.message);
-        
-        // İşlem İptali (Rollback): Eğer mail gitmezse hesabı ve veritabanı kaydını sil ki kullanıcı takılı kalmasın.
         await auth.deleteUser(userRecord.uid);
         await db.collection('users').doc(userRecord.uid).delete();
-        
-        return res.status(500).json({ error: 'Mail sunucusuna bağlanılamadı. Uygulama şifrenizi (App Password) kontrol edin.' });
+        return res.status(500).json({ error: 'Mail sunucusuna bağlanılamadı. Uygulama şifrenizi kontrol edin.' });
       }
     } else {
-      console.warn(`[UYARI] EMAIL_USER veya EMAIL_PASS eksik! Çevrimdışı Test modunda çalışıyor.`);
-      console.log(`[TEST MODU] ${email} için doğrulama kodu: ${verificationCode}`);
+      console.warn(`[UYARI] EMAIL_USER veya EMAIL_PASS eksik!`);
     }
 
-    res.json({ success: true, message: 'Kayıt başarılı! Lütfen e-postanıza gelen doğrulama kodunu girin.' });
+    res.json({ success: true, message: 'Kayıt başarılı!' });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -149,22 +140,58 @@ app.post('/api/verify-email', async (req, res) => {
     const userDoc = userSnap.docs[0];
     const userData = userDoc.data();
 
-    if (userData.isVerified) {
-      return res.status(400).json({ error: 'Bu e-posta adresi zaten doğrulanmış.' });
-    }
-
-    if (userData.verificationCode !== code) {
-      return res.status(400).json({ error: 'Geçersiz doğrulama kodu!' });
-    }
+    if (userData.isVerified) return res.status(400).json({ error: 'Bu e-posta adresi zaten doğrulanmış.' });
+    if (userData.verificationCode !== code) return res.status(400).json({ error: 'Geçersiz doğrulama kodu!' });
 
     await userDoc.ref.update({
       isVerified: true,
       verificationCode: FieldValue.delete()
     });
 
-    res.json({ success: true, message: 'E-posta başarıyla doğrulandı! Şimdi giriş yapabilirsiniz.' });
+    res.json({ success: true, message: 'E-posta başarıyla doğrulandı!' });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// 🟡 KODU TEKRAR GÖNDER (RESEND-CODE)
+app.post('/api/resend-code', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'E-posta adresi zorunludur.' });
+
+  try {
+    const userSnap = await db.collection('users').where('email', '==', email).limit(1).get();
+    if (userSnap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+
+    const userDoc = userSnap.docs[0];
+    const userData = userDoc.data();
+
+    if (userData.isVerified) return res.status(400).json({ error: 'Bu hesap zaten doğrulanmış.' });
+
+    const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+    await userDoc.ref.update({ verificationCode: newCode });
+
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      await transporter.sendMail({
+        from: `"Sesli Oda Ekibi" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: 'Sesli Oda - Yeni Doğrulama Kodunuz',
+        html: `
+          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; background-color: #1e1f22; color: #f2f3f5; border-radius: 12px; border: 1px solid #313338;">
+            <h2 style="color: #5865F2; text-align: center; margin-bottom: 20px;">Yeni Kodunuz Hazır!</h2>
+            <p style="font-size: 15px; line-height: 1.6;">Sesli Oda hesabınızı doğrulamak için talep ettiğiniz yeni kodunuz aşağıdadır:</p>
+            
+            <div style="background-color: #2b2d31; padding: 20px; font-size: 32px; font-weight: bold; letter-spacing: 8px; text-align: center; border-radius: 8px; margin: 30px 0; color: #ffffff; border: 1px solid #3f4147;">
+              ${newCode}
+            </div>
+          </div>
+        `
+      });
+    }
+
+    res.json({ success: true, message: 'Yeni doğrulama kodu gönderildi.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Kod gönderilirken bir hata oluştu.' });
   }
 });
 
@@ -192,8 +219,13 @@ app.post('/api/login', async (req, res) => {
        }
     }
 
+    // 🔴 KRİTİK GÜNCELLEME: Frontend'e Doğrulama İçin Email Parametresi Gönderiliyor
     if (userDocData && userDocData.isVerified === false) {
-      return res.status(403).json({ error: 'Lütfen önce e-posta adresinizi doğrulayın.' });
+      return res.status(403).json({ 
+        error: 'Hesabınız henüz doğrulanmamış. Lütfen kodunuzu girin.',
+        needsVerification: true,
+        email: email
+      });
     }
 
     if (!FIREBASE_WEB_API_KEY) return res.status(500).json({ error: 'Sunucu yapılandırma hatası (API Key Eksik).' });
@@ -228,11 +260,8 @@ app.delete('/api/delete-account', async (req, res) => {
     const userData = userDoc.data();
 
     if (userData.uid) {
-      try {
-        await auth.deleteUser(userData.uid);
-      } catch (authError) {
-        console.error("Auth'dan kullanıcı silinirken hata:", authError.message);
-      }
+      try { await auth.deleteUser(userData.uid); } 
+      catch (authError) { console.error("Auth'dan kullanıcı silinirken hata:", authError.message); }
     }
 
     await userDoc.ref.delete();

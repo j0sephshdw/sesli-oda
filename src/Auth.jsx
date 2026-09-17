@@ -34,7 +34,6 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
 
       alert('Kayıt Başarılı! Lütfen e-posta adresinize gelen 6 haneli kodu giriniz.');
       setAuthMode('verify');
-      setPassword('');
     } catch (err) { triggerError(err.message); }
     finally { setLoading(false); }
   };
@@ -57,6 +56,22 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
     finally { setLoading(false); }
   };
 
+  // 🟡 YENİ EKLENEN FONKSİYON: Kodu Tekrar Gönder
+  const handleResendCode = async () => {
+    setError(''); setLoading(true);
+    try {
+      const res = await fetch('/api/resend-code', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      
+      alert('Yeni doğrulama kodu e-postanıza başarıyla gönderildi!');
+    } catch (err) { triggerError(err.message); }
+    finally { setLoading(false); }
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setError(''); setLoading(true);
@@ -66,7 +81,16 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
         body: JSON.stringify({ username, password })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      
+      if (!res.ok) {
+        // 🔴 KRİTİK DÜZELTME: Hesap var ama doğrulanmamışsa, otomatik olarak kod ekranına at
+        if (data.needsVerification) {
+          setEmail(data.email);
+          setAuthMode('verify');
+          throw new Error('Hesabınız henüz doğrulanmamış. Lütfen e-postanıza gelen kodu girin.');
+        }
+        throw new Error(data.error);
+      }
       
       onAuthSuccess(data.username);
     } catch (err) { triggerError(err.message); }
@@ -97,13 +121,14 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
     finally { setLoading(false); }
   };
 
+  // 🟠 DOĞRULAMA (VERIFY) EKRANI GÜNCELLEMESİ
   if (authMode === 'verify') {
     return (
       <div className="premium-auth-wrapper">
         <div className={`premium-auth-card ${shake ? 'shake' : ''}`}>
           <div className="auth-header">
             <h2>E-posta Doğrulama</h2>
-            <p>Lütfen e-posta adresinize gönderilen 6 haneli kodu girin.</p>
+            <p>Lütfen <b>{email}</b> adresinize gönderilen 6 haneli kodu girin.</p>
           </div>
           {error && <div className="auth-error">{error}</div>}
           <form onSubmit={handleVerify}>
@@ -115,14 +140,17 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
               {loading ? 'Doğrulanıyor...' : 'Doğrula'}
             </button>
           </form>
-          <div className="auth-footer-links">
-            <a onClick={() => {setAuthMode('login'); setError(''); setVerificationCode('');}} className="link-action">İptal ve Girişe Dön</a>
+          
+          <div className="auth-footer-links" style={{marginTop: '20px'}}>
+             <a onClick={handleResendCode} className="link-action" style={{marginBottom: '10px', color: '#57F287'}}>Kodu Tekrar Gönder</a>
+             <a onClick={() => {setAuthMode('login'); setError(''); setVerificationCode('');}} className="link-action">İptal ve Girişe Dön</a>
           </div>
         </div>
       </div>
     );
   }
 
+  // 🔵 GİRİŞ / KAYIT / MİSAFİR EKRANI
   return (
     <div className="premium-auth-wrapper">
       <div className={`premium-auth-card ${shake ? 'shake' : ''}`}>
