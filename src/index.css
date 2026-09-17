@@ -34,6 +34,7 @@ body {
     max-width: 450px;
     position: relative;
     border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: transform 0.2s ease-in-out;
 }
 
 .auth-header {
@@ -83,6 +84,7 @@ body {
 
         .premium-form-group input:focus {
             border: 1px solid #5865f2;
+            box-shadow: 0 0 8px rgba(88, 101, 242, 0.4);
         }
 
 .password-wrapper {
@@ -109,6 +111,7 @@ body {
 
     .eye-btn:hover {
         transform: scale(1.1);
+        color: #f2f3f5;
     }
 
 .premium-submit-btn {
@@ -122,11 +125,16 @@ body {
     font-size: 16px;
     cursor: pointer;
     margin-top: 10px;
-    transition: 0.2s;
+    transition: background-color 0.2s, transform 0.1s;
 }
 
     .premium-submit-btn:hover:not(:disabled) {
         background: #4752c4;
+        transform: translateY(-2px);
+    }
+
+    .premium-submit-btn:active:not(:disabled) {
+        transform: translateY(0);
     }
 
     .premium-submit-btn:disabled {
@@ -162,8 +170,9 @@ body {
 }
 
 .auth-error {
-    background: #da373c;
-    color: white;
+    background: rgba(218, 55, 60, 0.2);
+    color: #ff6b6b;
+    border: 1px solid #da373c;
     padding: 10px;
     border-radius: 6px;
     margin-bottom: 15px;
@@ -343,6 +352,7 @@ body {
 
     .voice-user-card:hover {
         transform: translateY(-4px);
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
     }
 
     .voice-user-card .avatar {
@@ -607,20 +617,6 @@ body {
     z-index: 5;
 }
 
-.muted-badge {
-    position: absolute;
-    bottom: 12px;
-    background: #da373c;
-    color: white;
-    padding: 4px 8px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: bold;
-    display: flex;
-    align-items: center;
-    box-shadow: 0 2px 8px rgba(218, 55, 60, 0.4);
-}
-
 .waveform {
     position: absolute;
     bottom: 12px;
@@ -667,12 +663,12 @@ body {
     animation: floatUp 2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }
 
-.watermark-badge, .watermark-badge-left {
+.watermark-badge-left {
     position: fixed;
     bottom: 12px;
+    left: 12px;
     background: rgba(0, 0, 0, 0.45);
     backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     color: #949ba4;
     font-size: 11px;
@@ -687,10 +683,6 @@ body {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
-.watermark-badge-left {
-    left: 12px;
-}
-
     .watermark-badge-left span {
         color: #5865f2;
         font-weight: 700;
@@ -703,16 +695,6 @@ body {
 
     50% {
         opacity: 0.6;
-    }
-}
-
-@keyframes bounce {
-    from {
-        transform: translateY(0);
-    }
-
-    to {
-        transform: translateY(-3px);
     }
 }
 
@@ -1050,11 +1032,6 @@ body {
         border-radius: 0;
         object-fit: contain;
     }
-
-.header-actions {
-    display: flex;
-    align-items: center;
-}
 
 /* ==========================================================================
    14. AFK VE YAZIYOR ANİMASYONU
@@ -1536,7 +1513,7 @@ body {
     }
 
 /* ==========================================================================
-   21. DASHBOARD EKRANI (TAMAMLANAN KISIM)
+   21. DASHBOARD EKRANI & HESAP SİLME
    ========================================================================== */
 .dashboard-container {
     display: flex;
@@ -1568,20 +1545,34 @@ body {
     }
 
 .logout-btn {
+    width: 100%;
     background: transparent;
     color: #da373c;
     border: 1px solid #da373c;
-    padding: 6px 12px;
+    padding: 8px 12px;
     border-radius: 6px;
-    font-size: 12px;
+    font-size: 13px;
+    font-weight: bold;
     cursor: pointer;
     transition: 0.2s;
+    text-align: center;
 }
 
     .logout-btn:hover {
         background: #da373c;
         color: white;
     }
+
+    /* Hesap Sil Butonu için ekstra hover tasarımı (Eğer kırmızı zeminliyse) */
+    .logout-btn[style*="background-color"] {
+        transition: transform 0.2s, background-color 0.2s;
+    }
+
+        .logout-btn[style*="background-color"]:hover:not(:disabled) {
+            background-color: #bd2130 !important; /* Daha koyu kırmızı hover */
+            border-color: #b21f2d !important;
+            transform: scale(1.02);
+        }
 
 .my-rooms-section h4 {
     color: #949ba4;

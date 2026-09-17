@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   RoomAudioRenderer,
   useParticipants,
@@ -53,7 +53,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
 
   const { send, chatMessages } = useChat();
   const [msg, setMsg] = useState('');
-  
   const [dbMessages, setDbMessages] = useState([]);
   
   const chatEndRef = useRef(null);
@@ -89,56 +88,62 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   const prevChatCount = useRef(0);
   const myDisplayName = (localParticipant?.name || localParticipant?.identity || '').split('_')[0];
 
+  // 1. Veritabanından Geçmiş Mesajları Çekme
   useEffect(() => {
+    let isMounted = true;
     fetch(`/api/chat/${roomName}`)
       .then(res => res.json())
       .then(data => {
-        if (data.messages) setDbMessages(data.messages);
+        if (isMounted && data.messages) setDbMessages(data.messages);
       })
       .catch(err => console.error("Geçmiş mesajlar yüklenemedi:", err));
+    return () => { isMounted = false; };
   }, [roomName]);
 
+  // 2. Sayaç ve AFK/Idle Kontrolü
   useEffect(() => {
     const timer = setInterval(() => setUptime(prev => prev + 1), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const formatUptime = (totalSeconds) => {
+  const formatUptime = useCallback((totalSeconds) => {
     const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
     const s = (totalSeconds % 60).toString().padStart(2, '0');
     const h = Math.floor(totalSeconds / 3600);
     return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
-  };
+  }, []);
 
   useEffect(() => {
     let timeout;
     const handleMouseMove = () => {
       setIsIdle(false);
       clearTimeout(timeout);
-      timeout = setTimeout(() => setIsIdle(true), 3500);
+      timeout = setTimeout(() => setIsIdle(true), 4000);
     };
     window.addEventListener('mousemove', handleMouseMove);
-    timeout = setTimeout(() => setIsIdle(true), 3500);
+    timeout = setTimeout(() => setIsIdle(true), 4000);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       clearTimeout(timeout);
     };
   }, []);
 
-  const addToast = (message, type = 'info') => {
+  const addToast = useCallback((message, type = 'info') => {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 4000);
-  };
+  }, []);
 
+  // 3. Admin Özelliğini Set Etme
   useEffect(() => {
     if (localParticipant && isAdmin) {
       localParticipant.setAttributes({ ...localParticipant.attributes, admin: 'true' });
     }
   }, [localParticipant, isAdmin]);
 
+  // 4. Aygıtları Yükleme
   useEffect(() => {
     if (showSettings) {
       navigator.mediaDevices.enumerateDevices().then(devices => {
@@ -181,7 +186,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
     }
   }, [isCameraEnabled, isBlurred]);
 
-  const playMicTone = (isMuting) => {
+  const playMicTone = useCallback((isMuting) => {
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtx) return;
@@ -204,9 +209,9 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
       osc.start(); osc.stop(ctx.currentTime + 0.2);
     } catch(e) {}
-  };
+  }, []);
 
-  const playSoundboardEffect = (effectType) => {
+  const playSoundboardEffect = useCallback((effectType) => {
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtx) return;
@@ -233,9 +238,9 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
         osc.start(); osc.stop(ctx.currentTime + 0.4);
       }
     } catch(e) {}
-  };
+  }, []);
 
-  const playTone = (type) => {
+  const playTone = useCallback((type) => {
     if (muteChatSounds && (type === 'message' || type === 'mention')) return; 
     
     try {
@@ -281,9 +286,9 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
       osc.start();
       osc.stop(ctx.currentTime + (type === 'screen_share' ? 0.2 : type === 'mention' ? 0.25 : 0.15));
     } catch(e) {}
-  };
+  }, [muteChatSounds]);
 
-  const handleSendMessage = () => {
+  const handleSendMessage = useCallback(() => {
     if (msg.trim()) {
       send(msg);
       fetch('/api/chat', {
@@ -293,7 +298,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
       }).catch(err => console.error("Mesaj kaydedilemedi:", err));
       setMsg('');
     }
-  };
+  }, [msg, send, roomName, myDisplayName]);
 
   const handleTyping = (e) => {
     setMsg(e.target.value);
@@ -332,11 +337,11 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
       prevChatCount.current = chatMessages.length;
     }
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages, dbMessages, localParticipant, myDisplayName, muteChatSounds]);
+  }, [chatMessages, dbMessages, localParticipant, myDisplayName, playTone]);
 
   useEffect(() => {
     if(screenTracks.length > 0) playTone('screen_share');
-  }, [screenTracks.length]);
+  }, [screenTracks.length, playTone]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -354,10 +359,13 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   }, []);
 
   useEffect(() => {
+    let isActive = true;
     const setupNoiseCancellation = async () => {
       if (!isMicrophoneEnabled) {
-        setIsNoiseCancellingActive(false);
-        setNoiseStatus('🛡️ Mik Kapalı');
+        if (isActive) {
+           setIsNoiseCancellingActive(false);
+           setNoiseStatus('🛡️ Mik Kapalı');
+        }
         return;
       }
       if (!isKrispNoiseFilterSupported()) return setNoiseStatus('🚫 Desteklenmiyor');
@@ -366,19 +374,25 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
       if (!track) return;
 
       try {
-        setNoiseStatus('🛡️ Başlatılıyor...');
+        if (isActive) setNoiseStatus('🛡️ Başlatılıyor...');
         const currentProcessor = KrispNoiseFilter({ assetsLocation: '/krisp' });
         processorRef.current = currentProcessor;
         await track.setProcessor(currentProcessor);
-        setIsNoiseCancellingActive(true);
-        setNoiseStatus('🛡️ Gürültü Engelleme (AÇIK)');
+        if (isActive) {
+          setIsNoiseCancellingActive(true);
+          setNoiseStatus('🛡️ Gürültü Engelleme (AÇIK)');
+        }
       } catch (err) {
-        setNoiseStatus('🛡️ Hata');
-        setIsNoiseCancellingActive(false);
+        if (isActive) {
+          setNoiseStatus('🛡️ Hata');
+          setIsNoiseCancellingActive(false);
+        }
       }
     };
     setupNoiseCancellation();
+    
     return () => {
+      isActive = false;
       const track = localParticipant?.getTrackPublication(Track.Source.Microphone)?.track;
       if (track && processorRef.current) {
         track.stopProcessor().catch(() => {});
@@ -402,40 +416,42 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
       } catch(e) {}
     };
 
-    room.on(RoomEvent.ParticipantConnected, (p) => {
+    const handleConnected = (p) => {
       playTone('join');
       addToast(`🟢 ${p.name || p.identity.split('_')[0]} odaya katıldı.`, 'success');
-    });
-    
-    room.on(RoomEvent.ParticipantDisconnected, (p) => {
+    };
+
+    const handleDisconnected = (p) => {
       playTone('leave');
       addToast(`🔴 ${p.name || p.identity.split('_')[0]} odadan ayrıldı.`, 'error');
       if (p.identity === pinnedParticipantId) setPinnedParticipantId(null); 
-    });
-    
+    };
+
+    room.on(RoomEvent.ParticipantConnected, handleConnected);
+    room.on(RoomEvent.ParticipantDisconnected, handleDisconnected);
     room.on(RoomEvent.DataReceived, handleDataReceived);
 
     return () => {
-      room.removeAllListeners(RoomEvent.ParticipantConnected);
-      room.removeAllListeners(RoomEvent.ParticipantDisconnected);
-      room.removeAllListeners(RoomEvent.DataReceived);
+      room.off(RoomEvent.ParticipantConnected, handleConnected);
+      room.off(RoomEvent.ParticipantDisconnected, handleDisconnected);
+      room.off(RoomEvent.DataReceived, handleDataReceived);
     };
-  }, [room, localParticipant, pinnedParticipantId]);
+  }, [room, localParticipant, pinnedParticipantId, playSoundboardEffect, playTone, addToast]);
 
-  const spawnFloatingEmoji = (emoji) => {
+  const spawnFloatingEmoji = useCallback((emoji) => {
     const id = Date.now() + Math.random();
     const leftPos = Math.floor(Math.random() * 60) + 20;
     setFloatingEmojis((prev) => [...prev, { id, emoji, left: leftPos }]);
     setTimeout(() => setFloatingEmojis((prev) => prev.filter((item) => item.id !== id)), 2000);
-  };
+  }, []);
 
-  const sendEmojiReaction = (emoji) => {
+  const sendEmojiReaction = useCallback((emoji) => {
     spawnFloatingEmoji(emoji);
     if (room?.localParticipant) {
       const data = JSON.stringify({ type: 'EMOJI_REACTION', emoji });
       room.localParticipant.publishData(new TextEncoder().encode(data), { reliable: true });
     }
-  };
+  }, [room, spawnFloatingEmoji]);
 
   const toggleDeafen = () => {
     const nextState = !isDeafened;

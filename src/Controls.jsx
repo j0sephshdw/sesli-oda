@@ -6,31 +6,57 @@ import { BackgroundBlur } from '@livekit/track-processors';
 export default function Controls({ roomName, onLeave }) {
   const { localParticipant } = useLocalParticipant();
   const room = useRoomContext();
+  
   const [isMuted, setIsMuted] = useState(false);
   const [isCamOn, setIsCamOn] = useState(false);
   const [isBlurred, setIsBlurred] = useState(false);
   const [isHandRaised, setIsHandRaised] = useState(false);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
 
   const toggleMic = async () => {
-    await localParticipant.setMicrophoneEnabled(isMuted);
-    setIsMuted(!isMuted);
+    try {
+      await localParticipant.setMicrophoneEnabled(isMuted);
+      setIsMuted(!isMuted);
+    } catch (e) {
+      console.error('Mikrofon hatası:', e);
+    }
   };
 
   const toggleCam = async () => {
-    await localParticipant.setCameraEnabled(!isCamOn);
-    setIsCamOn(!isCamOn);
+    try {
+      await localParticipant.setCameraEnabled(!isCamOn);
+      setIsCamOn(!isCamOn);
+      
+      // Kamera kapanırsa bluru resetle
+      if (isCamOn && isBlurred) setIsBlurred(false);
+    } catch (e) {
+      console.error('Kamera hatası:', e);
+    }
   };
 
   const toggleBlur = async () => {
     const track = localParticipant.getTrackPublication(Track.Source.Camera)?.videoTrack;
-    if (!track) return alert('Önce kamerayı açın!');
+    if (!track) return alert('Lütfen önce kameranızı açın!');
     
-    if (!isBlurred) {
-      await track.setProcessor(BackgroundBlur(10));
-      setIsBlurred(true);
-    } else {
-      await track.stopProcessor();
-      setIsBlurred(false);
+    try {
+      if (!isBlurred) {
+        await track.setProcessor(BackgroundBlur(10));
+        setIsBlurred(true);
+      } else {
+        await track.stopProcessor();
+        setIsBlurred(false);
+      }
+    } catch (e) {
+      console.error('Blur hatası:', e);
+    }
+  };
+
+  const toggleScreenShare = async () => {
+    try {
+      await localParticipant.setScreenShareEnabled(!isScreenSharing, { audio: true });
+      setIsScreenSharing(!isScreenSharing);
+    } catch (e) {
+      console.error('Ekran paylaşımı hatası:', e);
     }
   };
 
@@ -43,7 +69,12 @@ export default function Controls({ roomName, onLeave }) {
   const copyInvite = () => {
     const url = `${window.location.origin}?room=${encodeURIComponent(roomName)}`;
     navigator.clipboard.writeText(url);
-    alert('Davet linki kopyalandı!');
+    alert('✅ Davet linki kopyalandı!');
+  };
+
+  const handleDisconnect = () => {
+    room.disconnect();
+    if (onLeave) onLeave();
   };
 
   return (
@@ -57,11 +88,14 @@ export default function Controls({ roomName, onLeave }) {
       <button onClick={toggleBlur} className={isBlurred ? 'active' : ''}>
         🌫️ Blur
       </button>
+      <button onClick={toggleScreenShare} className={isScreenSharing ? 'active' : ''}>
+        {isScreenSharing ? '📺 Yayını Kapat' : '📺 Ekran Paylaş'}
+      </button>
       <button onClick={toggleHand} className={isHandRaised ? 'active' : ''}>
         ✋ El Kaldır
       </button>
       <button onClick={copyInvite}>🔗 Davet Linki</button>
-      <button onClick={() => room.disconnect()} className="danger">
+      <button onClick={handleDisconnect} className="danger">
         🚪 Ayrıl
       </button>
     </div>
