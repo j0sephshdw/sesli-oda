@@ -119,6 +119,28 @@ export default function App() {
     setAuthMode('login');
   };
 
+  const handleDeleteAccount = async () => {
+    if (!window.confirm('⚠️ Hesabınızı kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz!')) return;
+    
+    setLoading(true);
+    try {
+      const res = await fetch('/api/delete-account', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      
+      alert('Hesabınız başarıyla silindi.');
+      handleLogout(); // Çıkış yap ve ana ekrana dön
+    } catch (err) {
+      triggerError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleJoinRoom = async (e, targetRoom = roomName) => {
     if (e) e.preventDefault();
     const joinName = authMode === 'guest' ? (username || 'Misafir') : localStorage.getItem('savedUsername');
@@ -183,7 +205,14 @@ export default function App() {
                {username.charAt(0).toUpperCase()}
             </div>
             <h3>{username}</h3>
-            <button onClick={handleLogout} className="logout-btn">Çıkış Yap</button>
+            
+            {/* Butonları düzenli tutmak için div eklendi */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '15px', width: '100%' }}>
+              <button onClick={handleLogout} className="logout-btn">Çıkış Yap</button>
+              <button onClick={handleDeleteAccount} disabled={loading} className="logout-btn" style={{ backgroundColor: '#dc3545', color: 'white', border: '1px solid #c82333' }}>
+                {loading ? 'Siliniyor...' : 'Hesabımı Sil'}
+              </button>
+            </div>
           </div>
           
           <div className="my-rooms-section">
