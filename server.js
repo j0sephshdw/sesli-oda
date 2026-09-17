@@ -15,21 +15,26 @@ dotenv.config();
 // 1. Firebase Admin Başlatma (Render Secret Files & Lokal Uyumlu)
 try {
   const renderSecretPath = '/etc/secrets/serviceAccountKey.json';
+  const localSecretPath = path.join(__dirname, 'serviceAccountKey.json');
   let serviceAccount;
 
   if (existsSync(renderSecretPath)) {
-    // Render üzerindeki Secret File dizininden oku
+    console.log("Render: Secret File dizininden okunuyor...");
     serviceAccount = JSON.parse(readFileSync(renderSecretPath, 'utf8'));
+  } else if (existsSync(localSecretPath)) {
+    console.log("Lokal: Çalışma dizininden okunuyor...");
+    serviceAccount = JSON.parse(readFileSync(localSecretPath, 'utf8'));
   } else {
-    // Lokal geliştirme ortamından oku
-    serviceAccount = JSON.parse(readFileSync(new URL('./serviceAccountKey.json', import.meta.url), 'utf8'));
+    throw new Error("serviceAccountKey.json dosyası hiçbir konumda bulunamadı!");
   }
   
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
   });
+  console.log("Firebase Admin başarıyla başlatıldı.");
 } catch (error) {
-  console.error("KRİTİK HATA: Firebase Service Account dosyası okunamadı!", error);
+  console.error("KRİTİK HATA: Firebase bağlantısı kurulamadı!", error.message);
+  process.exit(1); // Sunucuyu anında durdurur, zincirleme çökmeleri engeller
 }
 
 const auth = admin.auth();
