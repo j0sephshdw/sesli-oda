@@ -14,20 +14,26 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
-// 1. Firebase Admin Başlatma
+const translateFirebaseError = (errMessage) => {
+  const msg = errMessage.toLowerCase();
+  if (msg.includes('email-already-exists') || msg.includes('email_exists')) return 'Bu e-posta adresi ile zaten bir hesap mevcut.';
+  if (msg.includes('invalid-email')) return 'Lütfen geçerli bir e-posta adresi girin.';
+  if (msg.includes('weak-password')) return 'Şifreniz çok zayıf. Lütfen daha güçlü bir şifre belirleyin.';
+  if (msg.includes('user-not-found') || msg.includes('email_not_found')) return 'Bu bilgilere ait bir hesap bulunamadı.';
+  if (msg.includes('invalid-password') || msg.includes('wrong-password') || msg.includes('invalid_login_credentials')) return 'Şifreniz hatalı. Lütfen tekrar deneyin.';
+  if (msg.includes('too-many-requests')) return 'Çok fazla başarısız deneme yaptınız. Lütfen biraz bekleyin.';
+  return 'İşlem sırasında bir hata oluştu: ' + errMessage;
+};
+
 let firebaseApp;
 try {
   const renderSecretPath = '/etc/secrets/serviceAccountKey.json';
   const localSecretPath = path.join(__dirname, 'serviceAccountKey.json');
   let serviceAccount;
 
-  if (existsSync(renderSecretPath)) {
-    serviceAccount = JSON.parse(readFileSync(renderSecretPath, 'utf8'));
-  } else if (existsSync(localSecretPath)) {
-    serviceAccount = JSON.parse(readFileSync(localSecretPath, 'utf8'));
-  } else {
-    throw new Error("serviceAccountKey.json dosyası hiçbir konumda bulunamadı!");
-  }
+  if (existsSync(renderSecretPath)) serviceAccount = JSON.parse(readFileSync(renderSecretPath, 'utf8'));
+  else if (existsSync(localSecretPath)) serviceAccount = JSON.parse(readFileSync(localSecretPath, 'utf8'));
+  else throw new Error("serviceAccountKey.json dosyası bulunamadı!");
   
   firebaseApp = initializeApp({ credential: cert(serviceAccount) });
   console.log("Firebase Admin başarıyla başlatıldı.");
@@ -47,10 +53,6 @@ const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY;
 const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET;
 const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY;
 
-// ==========================================
-// API ROUTE'LARI
-// ==========================================
-
 // 🟢 KAYIT (REGISTER)
 app.post('/api/register', async (req, res) => {
   const { email, username, password } = req.body;
@@ -58,51 +60,32 @@ app.post('/api/register', async (req, res) => {
 
   try {
     const usernameCheck = await db.collection('users').where('username', '==', username).get();
-    if (!usernameCheck.empty) return res.status(400).json({ error: 'Bu kullanıcı adı zaten kullanımda.' });
+    if (!usernameCheck.empty) return res.status(400).json({ error: 'Bu kullanıcı adı zaten kullanımda. Lütfen başka bir ad seçin.' });
 
-    // Firebase Auth kullanıcısını oluştur
     const userRecord = await auth.createUser({ email, password, displayName: username });
 
     await db.collection('users').doc(userRecord.uid).set({
-      uid: userRecord.uid,
-      email,
-      username,
-      createdAt: FieldValue.serverTimestamp(),
-      rooms: []
+      uid: userRecord.uid, email, username, createdAt: FieldValue.serverTimestamp(), rooms: []
     });
 
     if (!FIREBASE_WEB_API_KEY) throw new Error("Sunucu yapılandırma hatası (API Key Eksik).");
 
-    // Firebase üzerinden onay maili tetikle
     const loginRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, returnSecureToken: true }),
     });
     const loginData = await loginRes.json();
-
-    if (!loginRes.ok) {
-      console.error("Firebase Login Hatası:", loginData);
-      throw new Error(loginData.error?.message || "Doğrulama token'ı alınamadı.");
-    }
+    if (!loginRes.ok) throw new Error(loginData.error?.message || "Doğrulama token'ı alınamadı.");
 
     const oobRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ requestType: "VERIFY_EMAIL", idToken: loginData.idToken }),
     });
     const oobData = await oobRes.json();
-
-    if (!oobRes.ok) {
-      console.error("Firebase sendOobCode Hatası:", oobData);
-      throw new Error(oobData.error?.message || "Onay maili gönderilemedi.");
-    }
+    if (!oobRes.ok) throw new Error(oobData.error?.message || "Onay maili gönderilemedi.");
 
     res.json({ success: true, message: 'Kayıt başarılı! Lütfen gelen kutunuzdaki onay linkine tıklayın.' });
-  } catch (err) {
-    console.error("Kayıt Hatası Detayı:", err.message);
-    res.status(400).json({ error: err.message });
-  }
+  } catch (err) { res.status(400).json({ error: translateFirebaseError(err.message) }); }
 });
 
 // 🟡 LİNKİ TEKRAR GÖNDER (RESEND)
@@ -113,32 +96,38 @@ app.post('/api/resend-code', async (req, res) => {
 
   try {
     const loginRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, returnSecureToken: true }),
     });
     const loginData = await loginRes.json();
-
-    if (!loginRes.ok) {
-      return res.status(401).json({ error: 'Şifreniz hatalı, lütfen tekrar deneyin.' });
-    }
+    if (!loginRes.ok) return res.status(401).json({ error: translateFirebaseError(loginData.error?.message || '') });
 
     const oobRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ requestType: "VERIFY_EMAIL", idToken: loginData.idToken }),
     });
-
-    if (!oobRes.ok) {
-      const oobData = await oobRes.json();
-      throw new Error(oobData.error?.message || "Mail gönderilemedi.");
-    }
+    if (!oobRes.ok) { const oobData = await oobRes.json(); throw new Error(oobData.error?.message || "Mail gönderilemedi."); }
 
     res.json({ success: true, message: 'Yeni onay linki e-postanıza gönderildi.' });
-  } catch (err) {
-    console.error("Resend Hatası Detayı:", err.message);
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: translateFirebaseError(err.message) }); }
+});
+
+// 🟣 ŞİFRE SIFIRLAMA (FORGOT PASSWORD)
+app.post('/api/reset-password', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'E-posta adresi zorunludur.' });
+  if (!FIREBASE_WEB_API_KEY) return res.status(500).json({ error: 'Sunucu yapılandırma hatası.' });
+
+  try {
+    const resetRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestType: "PASSWORD_RESET", email }),
+    });
+    const resetData = await resetRes.json();
+    if (!resetRes.ok) throw new Error(resetData.error?.message || "Şifre sıfırlama maili gönderilemedi.");
+
+    res.json({ success: true, message: 'Şifre sıfırlama bağlantısı e-posta adresinize gönderildi.' });
+  } catch (err) { res.status(500).json({ error: translateFirebaseError(err.message) }); }
 });
 
 // 🔵 GİRİŞ YAPMA (LOGIN)
@@ -147,60 +136,39 @@ app.post('/api/login', async (req, res) => {
   if (!identifier || !password) return res.status(400).json({ error: 'Bilgiler eksik.' });
 
   try {
-    let email = identifier;
-    let username = identifier;
-    let userDocData = null;
+    let email = identifier; let username = identifier; let userDocData = null;
 
     if (!identifier.includes('@')) {
       const userSnap = await db.collection('users').where('username', '==', identifier).limit(1).get();
-      if (userSnap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
-      userDocData = userSnap.docs[0].data();
-      email = userDocData.email;
-      username = userDocData.username;
+      if (userSnap.empty) return res.status(404).json({ error: 'Bu kullanıcı adıyla kayıtlı bir hesap bulunamadı.' });
+      userDocData = userSnap.docs[0].data(); email = userDocData.email; username = userDocData.username;
     } else {
       const userSnap = await db.collection('users').where('email', '==', email).limit(1).get();
-      if (userSnap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
-      
-      userDocData = userSnap.docs[0].data();
-      username = userDocData.username;
+      if (userSnap.empty) return res.status(404).json({ error: 'Bu e-posta ile kayıtlı bir hesap bulunamadı.' });
+      userDocData = userSnap.docs[0].data(); username = userDocData.username;
     }
 
     if (!FIREBASE_WEB_API_KEY) return res.status(500).json({ error: 'Sunucu yapılandırma hatası (API Key Eksik).' });
 
-    const loginRes = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, returnSecureToken: true }),
-      }
-    );
-
+    const loginRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, returnSecureToken: true }),
+    });
     const loginData = await loginRes.json();
-    if (!loginRes.ok) return res.status(401).json({ error: 'Hatalı şifre veya e-posta!' });
+    if (!loginRes.ok) return res.status(401).json({ error: translateFirebaseError(loginData.error?.message || '') });
 
-    // 🔴 KRİTİK KONTROL: Kullanıcı mailindeki linke tıkladı mı?
     const userInfoRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${FIREBASE_WEB_API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken: loginData.idToken })
     });
-    
     const userInfoData = await userInfoRes.json();
-    const isEmailVerified = userInfoData.users[0].emailVerified;
 
-    if (!isEmailVerified) {
-      return res.status(403).json({ 
-        error: 'Hesabınız onaylanmamış. Lütfen e-postanızdaki onay linkine tıklayın.',
-        needsVerification: true,
-        email: email
-      });
+    if (!userInfoData.users[0].emailVerified) {
+      return res.status(403).json({ error: 'Hesabınız onaylanmamış. Lütfen e-postanızdaki onay linkine tıklayın.', needsVerification: true, email: email });
     }
 
     res.json({ success: true, username: username });
-  } catch (err) {
-    res.status(500).json({ error: 'Giriş işlemi başarısız.' });
-  }
+  } catch (err) { res.status(500).json({ error: 'Giriş işlemi başarısız: ' + translateFirebaseError(err.message) }); }
 });
 
 // 🔴 HESAP SİLME (DELETE ACCOUNT)
@@ -211,34 +179,23 @@ app.delete('/api/delete-account', async (req, res) => {
   try {
     const userSnap = await db.collection('users').where('username', '==', username).limit(1).get();
     if (userSnap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+    const userDoc = userSnap.docs[0]; const userData = userDoc.data();
 
-    const userDoc = userSnap.docs[0];
-    const userData = userDoc.data();
-
-    if (userData.uid) {
-      try { await auth.deleteUser(userData.uid); } 
-      catch (authError) { console.error("Auth'dan kullanıcı silinirken hata:", authError.message); }
-    }
-
+    if (userData.uid) { try { await auth.deleteUser(userData.uid); } catch (e) {} }
     await userDoc.ref.delete();
     res.json({ success: true, message: 'Hesap başarıyla silindi.' });
-  } catch (err) {
-    res.status(500).json({ error: 'Hesap silinirken sunucu kaynaklı bir hata oluştu.' });
-  }
+  } catch (err) { res.status(500).json({ error: 'Hesap silinirken sunucu kaynaklı bir hata oluştu.' }); }
 });
 
 // ==========================================
 // LIVEKIT VE ODA ROUTE'LARI
 // ==========================================
-
 app.get('/api/rooms/:username', async (req, res) => {
   try {
     const snap = await db.collection('users').where('username', '==', req.params.username).limit(1).get();
     if (snap.empty) return res.json({ rooms: [] });
     res.json({ rooms: snap.docs[0].data().rooms || [] });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/token', async (req, res) => {
@@ -246,9 +203,7 @@ app.post('/api/token', async (req, res) => {
   if (!roomName || !participantName) return res.status(400).json({ error: 'Oda ve kullanıcı adı zorunlu.' });
 
   try {
-    const roomRef = db.collection('rooms').doc(roomName);
-    const roomSnap = await roomRef.get();
-    let isAdmin = false;
+    const roomRef = db.collection('rooms').doc(roomName); const roomSnap = await roomRef.get(); let isAdmin = false;
 
     if (!roomSnap.exists) {
       await roomRef.set({ name: roomName, creator: participantName, password: password || '', createdAt: FieldValue.serverTimestamp() });
@@ -259,53 +214,35 @@ app.post('/api/token', async (req, res) => {
       if (roomData.creator === participantName) isAdmin = true;
     }
 
-    // ODA GEÇMİŞİNİ KAYDETME KISMINDAKİ HATA DÜZELTİLDİ
     if (!isGuest) {
       const userSnap = await db.collection('users').where('username', '==', participantName).limit(1).get();
       if (!userSnap.empty) {
         let rooms = userSnap.docs[0].data().rooms || [];
-        if (!rooms.includes(roomName)) {
-           rooms.push(roomName); // <-- HATA BURADAYDI (rooms.push(rooms) yazıyordu)
-           if (rooms.length > 10) rooms.shift();
-           await userSnap.docs[0].ref.update({ rooms });
-        }
+        if (!rooms.includes(roomName)) { rooms.push(roomName); if (rooms.length > 10) rooms.shift(); await userSnap.docs[0].ref.update({ rooms }); }
       }
     }
 
-    const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { 
-      identity: `${participantName}_${Date.now()}`, 
-      name: participantName 
-    });
-    
+    const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity: `${participantName}_${Date.now()}`, name: participantName });
     at.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
-
     res.json({ token: await at.toJwt(), isAdmin });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/chat/:roomName', async (req, res) => {
   try {
     const snapshot = await db.collection('rooms').doc(req.params.roomName).collection('messages').orderBy('timestamp', 'desc').limit(50).get();
-    const messages = snapshot.docs.map(doc => doc.data()).reverse();
-    res.json({ messages });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+    res.json({ messages: snapshot.docs.map(doc => doc.data()).reverse() });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/chat', async (req, res) => {
   let { roomName, sender, message, timestamp } = req.body;
   if (!message || message.trim() === '') return res.status(400).json({ error: 'Boş mesaj gönderilemez.' });
   if (message.length > 500) message = message.substring(0, 500) + '...';
-
   try {
     await db.collection('rooms').doc(roomName).collection('messages').add({ sender, message, timestamp });
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.use(express.static(path.join(__dirname, 'dist')));

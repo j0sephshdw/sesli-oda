@@ -4,37 +4,57 @@ import { useChat } from '@livekit/components-react';
 const renderMessageText = (text = '', myDisplayName = '') => {
   if (!text) return null;
   const safeName = (myDisplayName || '').toLowerCase();
-  const parts = text.split(/(https?:\/\/[^\s]+|\*\*.*?\*\*|__.*?__|~~.*?~~|@[^\s]+)/g);
+  const lines = text.split('\n');
+  
+  return lines.map((line, lineIndex) => {
+    const parts = line.split(/(https?:\/\/[^\s]+|\*\*.*?\*\*|__.*?__|~~.*?~~|@[^\s]+)/g);
+    const renderedLine = parts.map((part, i) => {
+      if (!part) return null;
+      if (part.match(/^https?:\/\/[^\s]+$/)) return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">{part}</a>;
+      else if (part.startsWith('**') && part.endsWith('**')) return <strong key={i}>{part.slice(2, -2)}</strong>;
+      else if (part.startsWith('__') && part.endsWith('__')) return <u key={i}>{part.slice(2, -2)}</u>;
+      else if (part.startsWith('~~') && part.endsWith('~~')) return <del key={i}>{part.slice(2, -2)}</del>;
+      else if (safeName && part.toLowerCase() === `@${safeName}`) return <span key={i} className="mention-badge">{part}</span>;
+      else if (part.startsWith('@')) return <span key={i} className="mention-other">{part}</span>;
+      return part;
+    });
 
-  return parts.map((part, i) => {
-    if (!part) return null;
-    if (part.match(/^https?:\/\/[^\s]+$/)) {
-      return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">{part}</a>;
-    } else if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={i}>{part.slice(2, -2)}</strong>;
-    } else if (part.startsWith('__') && part.endsWith('__')) {
-      return <u key={i}>{part.slice(2, -2)}</u>;
-    } else if (part.startsWith('~~') && part.endsWith('~~')) {
-      return <del key={i}>{part.slice(2, -2)}</del>;
-    } else if (safeName && part.toLowerCase() === `@${safeName}`) {
-      return <span key={i} className="mention-badge">{part}</span>;
-    } else if (part.startsWith('@')) {
-      return <span key={i} className="mention-other">{part}</span>;
-    }
-    return part;
+    return (
+      <React.Fragment key={lineIndex}>
+        {renderedLine}
+        {lineIndex !== lines.length - 1 && <br />}
+      </React.Fragment>
+    );
   });
 };
 
-const formatTime = (timestamp) => {
+// 🟡 AKILLI TARİH FORMATLAMA (Smart Timestamps)
+const formatSmartTime = (timestamp) => {
   if (!timestamp) return '';
-  return new Date(timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  const date = new Date(timestamp);
+  const now = new Date();
+  
+  const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday = date.getDate() === yesterday.getDate() && date.getMonth() === yesterday.getMonth() && date.getFullYear() === yesterday.getFullYear();
+
+  const timeString = date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  
+  if (isToday) return `Bugün ${timeString}`;
+  if (isYesterday) return `Dün ${timeString}`;
+  
+  return `${date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} ${timeString}`;
 };
 
 export default function RoomChat({ roomName, myDisplayName = '', dbMessages = [], activeTypers = [], room }) {
   const { send, chatMessages } = useChat();
   const [msg, setMsg] = useState('');
+  const [copiedId, setCopiedId] = useState(null); // Kopyalama animasyonu için State
+  
   const chatEndRef = useRef(null);
   const containerRef = useRef(null);
+  const textareaRef = useRef(null);
   const lastTypingTimeRef = useRef(0);
 
   const scrollToBottom = (behavior = 'smooth') => {
@@ -45,29 +65,32 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
     const container = containerRef.current;
     if (!container) return;
     const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120;
-    if (isNearBottom) {
-      scrollToBottom('smooth');
-    }
+    if (isNearBottom) scrollToBottom('smooth');
   }, [chatMessages, dbMessages]);
 
   const handleSendMessage = (e) => {
-    e?.preventDefault();
+    if (e) e.preventDefault();
     const trimmed = msg.trim();
     if (!trimmed) return;
 
     send(trimmed);
     fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ roomName, sender: myDisplayName, message: trimmed, timestamp: Date.now() })
     }).catch(err => console.error("Mesaj kaydedilemedi:", err));
 
     setMsg('');
+    if (textareaRef.current) textareaRef.current.style.height = '44px';
     setTimeout(() => scrollToBottom('smooth'), 50);
   };
 
   const handleInputChange = (e) => {
     setMsg(e.target.value);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = '44px';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+    }
+
     const now = Date.now();
     if (room?.localParticipant && now - lastTypingTimeRef.current > 2000) {
       lastTypingTimeRef.current = now;
@@ -76,22 +99,40 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
     }
   };
 
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  // 🟡 ÇİFT TIKLAMA İLE MESAJ KOPYALAMA (Haptic Feedback)
+  const handleCopyMessage = (text, id) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 1500); // 1.5 Saniye sonra "Kopyalandı" yazısı kaybolur
+  };
+
   return (
     <div className="custom-chat-panel">
       <div className="chat-header">💬 Sohbet</div>
       <div className="chat-messages" ref={containerRef}>
-        <div className="chat-sys-msg">Oda geçmişi ve canlı mesajlar.</div>
+        <div className="chat-sys-msg" style={{marginBottom: '15px'}}>Oda geçmişi ve canlı mesajlar.<br/><small>Metni kopyalamak için mesaja çift tıklayın.</small></div>
 
         {dbMessages.map((m, idx) => {
           const safeName = (myDisplayName || '').toLowerCase();
           const isMentioned = safeName && m.message?.toLowerCase().includes(`@${safeName}`);
+          const msgId = m.id || `db-${m.timestamp}-${idx}`;
+          const isCopied = copiedId === msgId;
+
           return (
-            <div key={m.id || `db-${m.timestamp}-${idx}`} className={`chat-msg ${isMentioned ? 'mentioned-msg' : ''}`}>
+            <div key={msgId} className={`chat-msg ${isMentioned ? 'mentioned-msg' : ''}`} onDoubleClick={() => handleCopyMessage(m.message, msgId)} style={{cursor: 'pointer', position: 'relative'}}>
               <div className="chat-msg-header">
                 <span className="chat-sender">{m.sender || 'Anonim'}</span>
-                <span className="chat-time">{formatTime(m.timestamp)}</span>
+                <span className="chat-time">{formatSmartTime(m.timestamp)}</span>
               </div>
               <div className="chat-text">{renderMessageText(m.message, myDisplayName)}</div>
+              {isCopied && <div className="copied-toast">Kopyalandı! ✓</div>}
             </div>
           );
         })}
@@ -99,13 +140,17 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
         {chatMessages.map((m) => {
           const safeName = (myDisplayName || '').toLowerCase();
           const isMentioned = safeName && m.message?.toLowerCase().includes(`@${safeName}`);
+          const msgId = m.id || `live-${m.timestamp}`;
+          const isCopied = copiedId === msgId;
+
           return (
-            <div key={m.id || `live-${m.timestamp}`} className={`chat-msg ${isMentioned ? 'mentioned-msg' : ''}`}>
+            <div key={msgId} className={`chat-msg ${isMentioned ? 'mentioned-msg' : ''}`} onDoubleClick={() => handleCopyMessage(m.message, msgId)} style={{cursor: 'pointer', position: 'relative'}}>
               <div className="chat-msg-header">
                 <span className="chat-sender">{(m.from?.name || m.from?.identity || 'Anonim').split('_')[0]}</span>
-                <span className="chat-time">{formatTime(m.timestamp)}</span>
+                <span className="chat-time">{formatSmartTime(m.timestamp)}</span>
               </div>
               <div className="chat-text">{renderMessageText(m.message, myDisplayName)}</div>
+              {isCopied && <div className="copied-toast">Kopyalandı! ✓</div>}
             </div>
           );
         })}
@@ -119,14 +164,21 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
         </div>
       )}
 
-      <form className="chat-input-area" onSubmit={handleSendMessage}>
-        <input
-          type="text"
+      <form className="chat-input-area" onSubmit={handleSendMessage} style={{ alignItems: 'flex-end' }}>
+        <textarea
+          ref={textareaRef}
           value={msg}
           onChange={handleInputChange}
-          placeholder="Mesaj... (@isim, **kalın**, __alt__)"
+          onKeyDown={handleKeyDown}
+          placeholder="Mesaj... (Alt satır için Shift+Enter)"
+          rows={1}
+          style={{
+            flex: 1, padding: '12px', borderRadius: '6px', border: 'none', backgroundColor: '#1e1f22', color: 'white',
+            outline: 'none', resize: 'none', overflowY: 'auto', fontFamily: 'inherit', fontSize: '14px', lineHeight: '1.4',
+            minHeight: '44px', maxHeight: '120px', transition: 'border 0.2s'
+          }}
         />
-        <button type="submit" disabled={!msg.trim()}>Gönder</button>
+        <button type="submit" disabled={!msg.trim()} style={{ height: '44px' }}>Gönder</button>
       </form>
     </div>
   );

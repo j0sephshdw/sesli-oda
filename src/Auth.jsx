@@ -15,14 +15,11 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
   const [showPassword, setShowPassword] = useState(false);
 
   const triggerError = (msg) => {
-    setError(msg);
-    setShake(true);
-    setTimeout(() => setShake(false), 500);
+    setError(msg); setShake(true); setTimeout(() => setShake(false), 500);
   };
 
   const handleRegister = async (e) => {
-    e.preventDefault();
-    setError(''); setLoading(true);
+    e.preventDefault(); setError(''); setLoading(true);
     try {
       const res = await fetch('/api/register', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -30,17 +27,13 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-
       alert('Kayıt Başarılı! Google Firebase üzerinden e-posta adresinize bir onay linki gönderildi. Lütfen mailinize gidip linke tıklayın.');
       setAuthMode('verify');
-    } catch (err) { triggerError(err.message); }
-    finally { setLoading(false); }
+    } catch (err) { triggerError(err.message); } finally { setLoading(false); }
   };
 
   const handleResendLink = async () => {
-    if (!password) {
-      return alert("Güvenlik nedeniyle şifrenizi girmeniz gerekmektedir.");
-    }
+    if (!password) return alert("Güvenlik nedeniyle şifrenizi girmeniz gerekmektedir.");
     setError(''); setLoading(true);
     try {
       const res = await fetch('/api/resend-code', {
@@ -49,59 +42,85 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      
       alert('Yeni onay linki e-postanıza başarıyla gönderildi! (Gereksiz/Spam klasörünü kontrol etmeyi unutmayın)');
-    } catch (err) { triggerError(err.message); }
-    finally { setLoading(false); }
+    } catch (err) { triggerError(err.message); } finally { setLoading(false); }
   };
 
   const handleLogin = async (e) => {
-    e.preventDefault();
-    setError(''); setLoading(true);
+    e.preventDefault(); setError(''); setLoading(true);
     try {
       const res = await fetch('/api/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
       const data = await res.json();
-      
       if (!res.ok) {
         if (data.needsVerification) {
-          setEmail(data.email);
-          setAuthMode('verify');
+          setEmail(data.email); setAuthMode('verify');
           throw new Error('Hesabınız henüz onaylanmamış. Mailinizdeki linke tıklamalısınız.');
         }
         throw new Error(data.error);
       }
-      
       onAuthSuccess(data.username);
-    } catch (err) { triggerError(err.message); }
-    finally { setLoading(false); }
+    } catch (err) { triggerError(err.message); } finally { setLoading(false); }
   };
 
   const handleGuestJoin = async (e) => {
-    e.preventDefault();
-    const guestName = username || 'Misafir';
+    e.preventDefault(); const guestName = username || 'Misafir';
     if (!roomName.trim() || !guestName.trim()) return triggerError('İsim ve Oda Adı zorunlu.');
-    
     setError(''); setLoading(true);
     try {
       const res = await fetch('/api/token', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          roomName, 
-          participantName: guestName, 
-          password: roomPassword,
-          isGuest: true 
-        })
+        body: JSON.stringify({ roomName, participantName: guestName, password: roomPassword, isGuest: true })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      
       onGuestSuccess(roomName, data.token, data.isAdmin, guestName);
-    } catch (err) { triggerError(err.message); }
-    finally { setLoading(false); }
+    } catch (err) { triggerError(err.message); } finally { setLoading(false); }
   };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    if (!email) return triggerError('Lütfen e-posta adresinizi girin.');
+    setError(''); setLoading(true);
+    try {
+      const res = await fetch('/api/reset-password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      alert('Şifre sıfırlama bağlantısı e-postanıza gönderildi! Lütfen kontrol edin.');
+      setAuthMode('login');
+    } catch (err) { triggerError(err.message); } finally { setLoading(false); }
+  };
+
+  if (authMode === 'forgot-password') {
+    return (
+      <div className="premium-auth-wrapper">
+        <div className={`premium-auth-card ${shake ? 'shake' : ''}`}>
+          <div className="auth-header">
+            <h2>Şifremi Unuttum</h2>
+            <p style={{marginTop: '10px'}}>Kayıtlı e-posta adresinizi girin, size bir sıfırlama bağlantısı gönderelim.</p>
+          </div>
+          {error && <div className="auth-error">{error}</div>}
+          <form onSubmit={handleResetPassword}>
+            <div className="premium-form-group">
+              <label>E-POSTA ADRESİNİZ <span className="req">*</span></label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="ornek@mail.com" />
+            </div>
+            <button type="submit" disabled={loading} className="premium-submit-btn" style={{backgroundColor: '#e6a00f'}}>
+              {loading ? 'Gönderiliyor...' : 'Sıfırlama Linki Gönder'}
+            </button>
+          </form>
+          <div className="auth-footer-links" style={{marginTop: '20px'}}>
+             <a onClick={() => {setAuthMode('login'); setError('');}} className="link-action">İptal ve Girişe Dön</a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (authMode === 'verify') {
     return (
@@ -111,13 +130,10 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
             <h2>E-posta Doğrulaması Bekleniyor</h2>
             <p style={{marginTop: '10px'}}><b>{email}</b> adresinize bir onay linki yolladık.</p>
           </div>
-          
           {error && <div className="auth-error">{error}</div>}
-          
           <div style={{ textAlign: 'center', marginBottom: '20px', color: '#949ba4', fontSize: '14px' }}>
             Lütfen mailinize gidin, <b>gelen linke tıklayın</b> ve ardından aşağıdaki butona basarak giriş yapın.
           </div>
-
           <form onSubmit={handleLogin}>
             <div className="premium-form-group">
               <label>GÜVENLİK İÇİN ŞİFRENİZ <span className="req">*</span></label>
@@ -127,7 +143,6 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
               {loading ? 'Kontrol Ediliyor...' : 'Linke Tıkladım, Giriş Yap!'}
             </button>
           </form>
-          
           <div className="auth-footer-links" style={{marginTop: '20px'}}>
              <a onClick={handleResendLink} className="link-action" style={{marginBottom: '10px', color: '#57F287'}}>Linki Tekrar Gönder</a>
              <a onClick={() => {setAuthMode('login'); setError('');}} className="link-action">İptal ve Girişe Dön</a>
@@ -198,6 +213,7 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
         <div className="auth-footer-links">
           {authMode === 'login' ? (
             <>
+              <a onClick={() => {setAuthMode('forgot-password'); setError('');}} className="link-action" style={{marginBottom: '5px', color: '#e6a00f'}}>Şifremi Unuttum</a>
               <span className="text-muted">Hesabın yok mu? </span>
               <a onClick={() => {setAuthMode('register'); setError('');}} className="link-action">Kayıt Ol</a>
               <div className="divider">veya</div>
