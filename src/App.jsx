@@ -29,6 +29,9 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [shake, setShake] = useState(false);
 
+  // Doğrulama Kodu State'i
+  const [verificationCode, setVerificationCode] = useState('');
+
   useEffect(() => {
     const savedUser = localStorage.getItem('savedUsername');
     if (savedUser) {
@@ -63,10 +66,148 @@ export default function App() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      alert('Kayıt Başarılı! Lütfen giriş yapın.');
+
+      // Başarılı kayıt sonrası doğrulama (verify) ekranına geçiş
+      alert('Kayıt Başarılı! Lütfen e-posta adresinize gelen 6 haneli kodu giriniz.');
+      setAuthMode('verify');
+      setPassword(''); // Güvenlik için şifreyi bellekten siliyoruz
+    } catch (err) { triggerError(err.message); }
+    setLoading(false);
+  };
+
+  // E-posta doğrulama kodunu backend'e iletir
+  const handleVerify = async (e) => {
+    e.preventDefault();
+    setError(''); setLoading(true);
+    try {
+      const res = await fetch('/api/verify-email', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code: verificationCode })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      alert('E-posta başarıyla doğrulandı! Şimdi giriş yapabilirsiniz.');
       setAuthMode('login');
+      setVerificationCode('');
+    } catch (err) { triggerError(err.message); }
+    setLoading(false);
+  };
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError(''); setLoading(true);
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      
+      localStorage.setItem('savedUsername', data.username);
+      fetchMyRooms(data.username);
+      setAuthMode('dashboard');
       setPassword('');
-      setEmail('');
+    } catch (err) { triggerError(err.message); }
+    setLoading(false);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('savedUsername');
+    setUsername(''); setPassword(''); setMyRooms([]);
+    setAuthMode('login```jsx
+import React, { useState, useEffect } from 'react';
+import { LiveKitRoom } from '@livekit/components-react';
+import AudioRoom from './AudioRoom';
+import '@livekit/components-styles';
+import './index.css'; 
+
+const LIVEKIT_URL = 'wss://bizim-dc-x3m53dz5.livekit.cloud';
+
+export default function App() {
+  const [authMode, setAuthMode] = useState('login'); 
+  
+  // Form State'leri
+  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState(localStorage.getItem('savedUsername') || '');
+  const [password, setPassword] = useState('');
+  
+  // Oda State'leri
+  const [roomName, setRoomName] = useState('');
+  const [roomPassword, setRoomPassword] = useState('');
+  const [myRooms, setMyRooms] = useState([]);
+  
+  // LiveKit State'leri
+  const [token, setToken] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
+  
+  // UI State'leri
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [shake, setShake] = useState(false);
+
+  const [verificationCode, setVerificationCode] = useState('');
+
+  useEffect(() => {
+    const savedUser = localStorage.getItem('savedUsername');
+    if (savedUser) {
+      fetchMyRooms(savedUser);
+      setAuthMode('dashboard');
+    }
+  }, []);
+
+  const fetchMyRooms = async (user) => {
+    try {
+      const res = await fetch(`/api/rooms/${user}`);
+      const data = await res.json();
+      if (data.rooms) setMyRooms(data.rooms);
+    } catch (err) {
+      console.error("Geçmiş odalar çekilemedi:", err);
+    }
+  };
+
+  const triggerError = (msg) => {
+    setError(msg);
+    setShake(true);
+    setTimeout(() => setShake(false), 500);
+  };
+
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setError(''); setLoading(true);
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, username, password })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      // Başarılı kayıt sonrası doğrulama (verify) ekranına geçiş
+      alert('Kayıt Başarılı! Lütfen e-posta adresinize gelen 6 haneli kodu giriniz.');
+      setAuthMode('verify');
+      setPassword(''); // Güvenlik için şifreyi bellekten siliyoruz
+    } catch (err) { triggerError(err.message); }
+    setLoading(false);
+  };
+
+  // E-posta doğrulama kodunu backend'e iletir
+  const handleVerify = async (e) => {
+    e.preventDefault();
+    setError(''); setLoading(true);
+    try {
+      const res = await fetch('/api/verify-email', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, code: verificationCode })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      alert('E-posta başarıyla doğrulandı! Şimdi giriş yapabilirsiniz.');
+      setAuthMode('login');
+      setVerificationCode('');
     } catch (err) { triggerError(err.message); }
     setLoading(false);
   };
@@ -127,16 +268,10 @@ export default function App() {
   // 🔴 ODA İÇİ GÖRÜNÜM 🔴
   if (authMode === 'room' && token) {
     return (
-      <LiveKitRoom
-        video={false}
-        audio={{ echoCancellation: true, noiseSuppression: false, autoGainControl: true }}
-        options={{ adaptiveStream: true, dynacast: true }}
-        token={token}
-        serverUrl={LIVEKIT_URL}
-        onDisconnected={() => { setToken(''); setAuthMode(localStorage.getItem('savedUsername') ? 'dashboard' : 'login'); }}
+      <LiveKitRoom adaptiveStream: audio="{{" autoGainControl: dynacast: echoCancellation: false, noiseSuppression: onDisconnected="{()" options="{{" serverUrl="{LIVEKIT_URL}" token="{token}" true true, video="{false}" }}> { setToken(''); setAuthMode(localStorage.getItem('savedUsername') ? 'dashboard' : 'login'); }}
         data-lk-theme="default"
       >
-        <AudioRoom roomName={roomName} isAdmin={isAdmin} onLeave={() => { setToken(''); setAuthMode(localStorage.getItem('savedUsername') ? 'dashboard' : 'login'); }} />
+        <AudioRoom isAdmin="{isAdmin}" onLeave="{()" roomName="{roomName}"> { setToken(''); setAuthMode(localStorage.getItem('savedUsername') ? 'dashboard' : 'login'); }} />
       </LiveKitRoom>
     );
   }
@@ -191,6 +326,46 @@ export default function App() {
                 {loading ? 'Bağlanılıyor...' : 'Odaya Gir'}
               </button>
             </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 🟠 DOĞRULAMA (VERIFY) GÖRÜNÜMÜ 🟠
+  if (authMode === 'verify') {
+    return (
+      <div className="premium-auth-wrapper">
+        <div className={`premium-auth-card ${shake ? 'shake' : ''}`}>
+          <div className="auth-header">
+            <h2>E-posta Doğrulama</h2>
+            <p>Lütfen e-posta adresinize gönderilen 6 haneli kodu girin.</p>
+          </div>
+          
+          {error && <div className="auth-error">{error}</div>}
+          
+          <form onSubmit={handleVerify}>
+            <div className="premium-form-group">
+              <label>DOĞRULAMA KODU <span className="req">*</span></label>
+              <input 
+                type="text" 
+                value={verificationCode} 
+                onChange={(e) => setVerificationCode(e.target.value)} 
+                required 
+                placeholder="Örn: 123456" 
+                maxLength={6}
+              />
+            </div>
+            
+            <button type="submit" disabled={loading} className="premium-submit-btn">
+              {loading ? 'Doğrulanıyor...' : 'Doğrula'}
+            </button>
+          </form>
+
+          <div className="auth-footer-links">
+            <a onClick={() => {setAuthMode('login'); setError(''); setVerificationCode('');}} className="link-action">
+              İptal ve Girişe Dön
+            </a>
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import nodemailer from 'nodemailer';
 import { AccessToken } from 'livekit-server-sdk';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
@@ -51,10 +52,20 @@ const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY;
 const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET;
 const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY;
 
+// 2. E-Posta Gönderici (Nodemailer Transporter)
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
+
 // ==========================================
 // API ROUTE'LARI
 // ==========================================
 
+// 🟢 KAYIT (REGISTER)
 app.post('/api/register', async (req, res) => {
   const { email, username, password } = req.body;
   if (!email || !username || !password) return res.status(400).json({ error: 'E-posta, kullanıcı adı ve şifre zorunludur.' });
@@ -68,20 +79,71 @@ app.post('/api/register', async (req, res) => {
 
     const userRecord = await auth.createUser({ email, password, displayName: username });
     
+    // 6 Haneli Rastgele Doğrulama Kodu Üretme
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Veritabanına isVerified: false olarak kaydetme
     await db.collection('users').doc(userRecord.uid).set({
       uid: userRecord.uid,
       email,
       username,
+      isVerified: false,
+      verificationCode: verificationCode,
       createdAt: FieldValue.serverTimestamp(),
       rooms: []
     });
 
-    res.json({ success: true, message: 'Kayıt başarılı! Lütfen giriş yapın.' });
+    // Kullanıcıya E-posta Gönderme
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      await transporter.sendMail({
+        from: `"Sesli Oda" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: 'E-posta Doğrulama Kodu',
+        html: `<h3>Hoş Geldiniz!</h3><p>Hesabınızı doğrulamak için kodunuz: <b>${verificationCode}</b></p>`
+      });
+    } else {
+      console.log(`[TEST MODU] ${email} için doğrulama kodu: ${verificationCode}`);
+    }
+
+    res.json({ success: true, message: 'Kayıt başarılı! Lütfen e-postanıza gelen doğrulama kodunu girin.' });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
+// 🟠 E-POSTA DOĞRULAMA (VERIFY-EMAIL) - YENİ ROUTE
+app.post('/api/verify-email', async (req, res) => {
+  const { email, code } = req.body;
+  if (!email || !code) return res.status(400).json({ error: 'E-posta ve doğrulama kodu zorunludur.' });
+
+  try {
+    const userSnap = await db.collection('users').where('email', '==', email).limit(1).get();
+    if (userSnap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+
+    const userDoc = userSnap.docs[0];
+    const userData = userDoc.data();
+
+    if (userData.isVerified) {
+      return res.status(400).json({ error: 'Bu e-posta adresi zaten doğrulanmış.' });
+    }
+
+    if (userData.verificationCode !== code) {
+      return res.status(400).json({ error: 'Geçersiz doğrulama kodu!' });
+    }
+
+    // Onaylandı: isVerified = true yap ve kodu sil
+    await userDoc.ref.update({
+      isVerified: true,
+      verificationCode: FieldValue.delete()
+    });
+
+    res.json({ success: true, message: 'E-posta başarıyla doğrulandı! Şimdi giriş yapabilirsiniz.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 🔵 GİRİŞ YAPMA (LOGIN)
 app.post('/api/login', async (req, res) => {
   const { username: identifier, password } = req.body;
   if (!identifier || !password) return res.status(400).json({ error: 'Bilgiler eksik.' });
@@ -89,15 +151,25 @@ app.post('/api/login', async (req, res) => {
   try {
     let email = identifier;
     let username = identifier;
+    let userDocData = null;
 
     if (!identifier.includes('@')) {
       const userSnap = await db.collection('users').where('username', '==', identifier).limit(1).get();
       if (userSnap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
-      email = userSnap.docs[0].data().email;
-      username = userSnap.docs[0].data().username;
+      userDocData = userSnap.docs[0].data();
+      email = userDocData.email;
+      username = userDocData.username;
     } else {
        const userSnap = await db.collection('users').where('email', '==', email).limit(1).get();
-       if(!userSnap.empty) username = userSnap.docs[0].data().username;
+       if (!userSnap.empty) {
+         userDocData = userSnap.docs[0].data();
+         username = userDocData.username;
+       }
+    }
+
+    // ⛔ E-posta Doğrulama Kontrolü
+    if (userDocData && userDocData.isVerified === false) {
+      return res.status(403).json({ error: 'Lütfen önce e-posta adresinizi doğrulayın.' });
     }
 
     if (!FIREBASE_WEB_API_KEY) return res.status(500).json({ error: 'Sunucu yapılandırma hatası (API Key Eksik).' });
