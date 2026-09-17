@@ -7,7 +7,7 @@ import '@livekit/components-styles';
 const LIVEKIT_URL = 'wss://bizim-dc-x3m53dz5.livekit.cloud';
 
 export default function App() {
-  const [authMode, setAuthMode] = useState('login'); // 'login', 'register', 'guest', 'dashboard', 'room'
+  const [authMode, setAuthMode] = useState('login'); 
   const [username, setUsername] = useState(localStorage.getItem('savedUsername') || '');
   const [password, setPassword] = useState('');
   
@@ -17,10 +17,13 @@ export default function App() {
   
   const [token, setToken] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  
+  // YENİ: Gelişmiş Hata ve UI State'leri
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [shake, setShake] = useState(false);
 
-  // Uygulama açılışında kayıtlı kullanıcı varsa direkt Dashboard'a al
   useEffect(() => {
     const savedUser = localStorage.getItem('savedUsername');
     if (savedUser) {
@@ -37,6 +40,13 @@ export default function App() {
     } catch (err) {}
   };
 
+  // YENİ: Hata durumunda ekranı titreten fonksiyon
+  const triggerError = (msg) => {
+    setError(msg);
+    setShake(true);
+    setTimeout(() => setShake(false), 500);
+  };
+
   const handleRegister = async (e) => {
     e.preventDefault();
     setError(''); setLoading(true);
@@ -49,7 +59,8 @@ export default function App() {
       if (!res.ok) throw new Error(data.error);
       alert('Kayıt Başarılı! Lütfen giriş yapın.');
       setAuthMode('login');
-    } catch (err) { setError(err.message); }
+      setPassword('');
+    } catch (err) { triggerError(err.message); }
     setLoading(false);
   };
 
@@ -67,7 +78,8 @@ export default function App() {
       localStorage.setItem('savedUsername', data.username);
       fetchMyRooms(data.username);
       setAuthMode('dashboard');
-    } catch (err) { setError(err.message); }
+      setPassword('');
+    } catch (err) { triggerError(err.message); }
     setLoading(false);
   };
 
@@ -81,7 +93,7 @@ export default function App() {
     if (e) e.preventDefault();
     const joinName = authMode === 'guest' ? (username || 'Misafir') : localStorage.getItem('savedUsername');
     
-    if (!targetRoom.trim() || !joinName.trim()) return setError('İsim ve Oda Adı zorunlu.');
+    if (!targetRoom.trim() || !joinName.trim()) return triggerError('İsim ve Oda Adı zorunlu.');
     
     setError(''); setLoading(true);
     try {
@@ -101,11 +113,10 @@ export default function App() {
       setIsAdmin(data.isAdmin); 
       setToken(data.token);
       setAuthMode('room');
-    } catch (err) { setError(err.message); }
+    } catch (err) { triggerError(err.message); }
     setLoading(false);
   };
 
-  // 1. ODA EKRANI (LIVEKIT)
   if (authMode === 'room' && token) {
     return (
       <LiveKitRoom
@@ -122,7 +133,6 @@ export default function App() {
     );
   }
 
-  // 2. DASHBOARD EKRANI (Giriş Yapmış Kullanıcılar İçin)
   if (authMode === 'dashboard') {
     return (
       <div className="dashboard-container">
@@ -148,19 +158,22 @@ export default function App() {
         </div>
 
         <div className="dashboard-main">
-          <div className="join-card">
-            <h2>Yeni Oda Kur / Katıl</h2>
-            {error && <div className="error-msg">{error}</div>}
+          <div className="join-card premium-auth-card">
+            <div className="auth-header">
+              <h2>Yeni Oda Kur veya Katıl</h2>
+              <p>Maceraya atılmaya hazır mısın?</p>
+            </div>
+            {error && <div className={`auth-error ${shake ? 'shake' : ''}`}>{error}</div>}
             <form onSubmit={handleJoinRoom}>
-              <div className="form-group">
-                <label>Oda Adı</label>
+              <div className="premium-form-group">
+                <label>ODA ADI <span className="req">*</span></label>
                 <input type="text" value={roomName} onChange={(e) => setRoomName(e.target.value)} required placeholder="Örn: Genel Sohbet" />
               </div>
-              <div className="form-group">
-                <label>Oda Şifresi (Kuruyorsan Belirle)</label>
+              <div className="premium-form-group">
+                <label>ODA ŞİFRESİ</label>
                 <input type="password" value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} placeholder="Gizli Şifre (İsteğe bağlı)" />
               </div>
-              <button type="submit" disabled={loading} className="join-btn">
+              <button type="submit" disabled={loading} className="premium-submit-btn">
                 {loading ? 'Bağlanılıyor...' : 'Odaya Gir'}
               </button>
             </form>
@@ -170,49 +183,82 @@ export default function App() {
     );
   }
 
-  // 3. GİRİŞ / KAYIT / MİSAFİR EKRANLARI
+  // YENİ: DİSCORD BİREBİR GİRİŞ/KAYIT EKRANI
   return (
-    <div className="join-container">
-      <div className="join-card auth-card">
-        <div className="auth-tabs">
-          <button className={authMode === 'login' ? 'active' : ''} onClick={() => setAuthMode('login')}>Giriş</button>
-          <button className={authMode === 'register' ? 'active' : ''} onClick={() => setAuthMode('register')}>Kayıt Ol</button>
-          <button className={authMode === 'guest' ? 'active' : ''} onClick={() => setAuthMode('guest')}>Misafir</button>
+    <div className="premium-auth-wrapper">
+      <div className={`premium-auth-card ${shake ? 'shake' : ''}`}>
+        <div className="auth-header">
+          <h2>{authMode === 'login' ? 'Tekrar Hoş Geldin!' : authMode === 'register' ? 'Hesap Oluştur' : 'Misafir Girişi'}</h2>
+          <p>{authMode === 'login' ? 'Seni tekrar görmek ne güzel!' : authMode === 'register' ? 'Hemen bize katıl ve odalarını kaydet.' : 'Kayıt olmadan hızlıca odalara sız.'}</p>
         </div>
 
-        <h2>{authMode === 'login' ? 'Tekrar Hoşgeldin!' : authMode === 'register' ? 'Hesap Oluştur' : 'Misafir Olarak Gir'}</h2>
-        {error && <div className="error-msg">{error}</div>}
+        {error && <div className="auth-error">{error}</div>}
         
         <form onSubmit={authMode === 'login' ? handleLogin : authMode === 'register' ? handleRegister : handleJoinRoom}>
-          <div className="form-group">
-            <label>Kullanıcı Adı</label>
+          <div className="premium-form-group">
+            <label>KULLANICI ADI <span className="req">*</span></label>
             <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} required />
           </div>
           
           {authMode !== 'guest' && (
-            <div className="form-group">
-              <label>Şifre</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <div className="premium-form-group">
+              <label>ŞİFRE <span className="req">*</span></label>
+              <div className="password-wrapper">
+                <input 
+                  type={showPassword ? "text" : "password"} 
+                  value={password} 
+                  onChange={(e) => setPassword(e.target.value)} 
+                  required 
+                />
+                <button type="button" className="eye-btn" onClick={() => setShowPassword(!showPassword)}>
+                  {showPassword ? '🙈' : '👁️'}
+                </button>
+              </div>
+              {authMode === 'login' && <span className="forgot-password">Şifreni mi unuttun?</span>}
             </div>
           )}
 
           {authMode === 'guest' && (
             <>
-              <div className="form-group">
-                <label>Oda Adı</label>
+              <div className="premium-form-group">
+                <label>ODA ADI <span className="req">*</span></label>
                 <input type="text" value={roomName} onChange={(e) => setRoomName(e.target.value)} required />
               </div>
-              <div className="form-group">
-                <label>Oda Şifresi</label>
-                <input type="password" value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} />
+              <div className="premium-form-group">
+                <label>ODA ŞİFRESİ</label>
+                <div className="password-wrapper">
+                  <input type={showPassword ? "text" : "password"} value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)} />
+                  <button type="button" className="eye-btn" onClick={() => setShowPassword(!showPassword)}>
+                    {showPassword ? '🙈' : '👁️'}
+                  </button>
+                </div>
               </div>
             </>
           )}
 
-          <button type="submit" disabled={loading} className="join-btn">
-            {loading ? 'İşleniyor...' : authMode === 'login' ? 'Giriş Yap' : authMode === 'register' ? 'Kayıt Ol' : 'Odaya Gir'}
+          <button type="submit" disabled={loading} className="premium-submit-btn">
+            {loading ? 'İşleniyor...' : authMode === 'login' ? 'Giriş Yap' : authMode === 'register' ? 'Devam Et' : 'Odaya Gir'}
           </button>
         </form>
+
+        <div className="auth-footer-links">
+          {authMode === 'login' ? (
+            <>
+              <span className="text-muted">Hesabın yok mu? </span>
+              <a onClick={() => {setAuthMode('register'); setError('');}} className="link-action">Kayıt Ol</a>
+              <div className="divider">veya</div>
+              <a onClick={() => {setAuthMode('guest'); setError('');}} className="link-action guest-link">Kayıt olmadan misafir olarak gir</a>
+            </>
+          ) : authMode === 'register' ? (
+            <>
+              <a onClick={() => {setAuthMode('login'); setError('');}} className="link-action">Zaten bir hesabın var mı?</a>
+              <div className="divider">veya</div>
+              <a onClick={() => {setAuthMode('guest'); setError('');}} className="link-action guest-link">Kayıt olmadan misafir olarak gir</a>
+            </>
+          ) : (
+            <a onClick={() => {setAuthMode('login'); setError('');}} className="link-action">Geri Dön ve Giriş Yap</a>
+          )}
+        </div>
       </div>
     </div>
   );
