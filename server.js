@@ -15,7 +15,7 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
-// 1. Firebase Admin Başlatma (Render Secret Files & Lokal Uyumlu)
+// 1. Firebase Admin Başlatma
 let firebaseApp;
 try {
   const renderSecretPath = '/etc/secrets/serviceAccountKey.json';
@@ -77,6 +77,7 @@ app.post('/api/register', async (req, res) => {
     const usernameCheck = await db.collection('users').where('username', '==', username).get();
     if (!usernameCheck.empty) return res.status(400).json({ error: 'Bu kullanıcı adı zaten kullanımda.' });
 
+    // Firebase'de Kullanıcı Oluşturma
     const userRecord = await auth.createUser({ email, password, displayName: username });
     
     // 6 Haneli Rastgele Doğrulama Kodu Üretme
@@ -93,15 +94,40 @@ app.post('/api/register', async (req, res) => {
       rooms: []
     });
 
-    // Kullanıcıya E-posta Gönderme
+    // 🔴 KRİTİK GÜNCELLEME: Profesyonel HTML Şablonu ve SMTP Hata Yakalama (Rollback)
     if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-      await transporter.sendMail({
-        from: `"Sesli Oda" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: 'E-posta Doğrulama Kodu',
-        html: `<h3>Hoş Geldiniz!</h3><p>Hesabınızı doğrulamak için kodunuz: <b>${verificationCode}</b></p>`
-      });
+      try {
+        await transporter.sendMail({
+          from: `"Sesli Oda Ekibi" <${process.env.EMAIL_USER}>`,
+          to: email,
+          subject: 'Sesli Oda - E-posta Doğrulama Kodu',
+          html: `
+            <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; background-color: #1e1f22; color: #f2f3f5; border-radius: 12px; border: 1px solid #313338;">
+              <h2 style="color: #5865F2; text-align: center; margin-bottom: 20px;">Aramıza Hoş Geldin, ${username}!</h2>
+              <p style="font-size: 15px; line-height: 1.6;">Sesli Oda hesabını doğrulamak ve kesintisiz sohbete başlamak için aşağıdaki 6 haneli güvenlik kodunu kullanabilirsin:</p>
+              
+              <div style="background-color: #2b2d31; padding: 20px; font-size: 32px; font-weight: bold; letter-spacing: 8px; text-align: center; border-radius: 8px; margin: 30px 0; color: #ffffff; border: 1px solid #3f4147;">
+                ${verificationCode}
+              </div>
+              
+              <p style="font-size: 13px; color: #949ba4; text-align: center; border-top: 1px solid #313338; padding-top: 20px; margin-top: 30px;">
+                Eğer bu kayıt işlemini sen başlatmadıysan, bu e-postayı güvenle görmezden gelebilirsin.
+              </p>
+            </div>
+          `
+        });
+        console.log(`[BAŞARILI] ${email} adresine doğrulama maili gönderildi.`);
+      } catch (mailError) {
+        console.error("[NODEMAILER HATASI]: E-posta gönderilemedi -", mailError.message);
+        
+        // İşlem İptali (Rollback): Eğer mail gitmezse hesabı ve veritabanı kaydını sil ki kullanıcı takılı kalmasın.
+        await auth.deleteUser(userRecord.uid);
+        await db.collection('users').doc(userRecord.uid).delete();
+        
+        return res.status(500).json({ error: 'Mail sunucusuna bağlanılamadı. Uygulama şifrenizi (App Password) kontrol edin.' });
+      }
     } else {
+      console.warn(`[UYARI] EMAIL_USER veya EMAIL_PASS eksik! Çevrimdışı Test modunda çalışıyor.`);
       console.log(`[TEST MODU] ${email} için doğrulama kodu: ${verificationCode}`);
     }
 
@@ -131,7 +157,6 @@ app.post('/api/verify-email', async (req, res) => {
       return res.status(400).json({ error: 'Geçersiz doğrulama kodu!' });
     }
 
-    // Onaylandı: isVerified = true yap ve kodu sil
     await userDoc.ref.update({
       isVerified: true,
       verificationCode: FieldValue.delete()
@@ -167,7 +192,6 @@ app.post('/api/login', async (req, res) => {
        }
     }
 
-    // ⛔ E-posta Doğrulama Kontrolü
     if (userDocData && userDocData.isVerified === false) {
       return res.status(403).json({ error: 'Lütfen önce e-posta adresinizi doğrulayın.' });
     }
@@ -194,41 +218,34 @@ app.post('/api/login', async (req, res) => {
 // 🔴 HESAP SİLME (DELETE ACCOUNT)
 app.delete('/api/delete-account', async (req, res) => {
   const { username } = req.body;
-  
-  if (!username) {
-    return res.status(400).json({ error: 'Kullanıcı adı zorunludur.' });
-  }
+  if (!username) return res.status(400).json({ error: 'Kullanıcı adı zorunludur.' });
 
   try {
-    // 1. Kullanıcıyı Firestore'da bul
     const userSnap = await db.collection('users').where('username', '==', username).limit(1).get();
-    
-    if (userSnap.empty) {
-      return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
-    }
+    if (userSnap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
 
     const userDoc = userSnap.docs[0];
     const userData = userDoc.data();
 
-    // 2. Firebase Authentication'dan kullanıcıyı sil
     if (userData.uid) {
       try {
         await auth.deleteUser(userData.uid);
       } catch (authError) {
         console.error("Auth'dan kullanıcı silinirken hata:", authError.message);
-        // Auth tarafında yoksa bile Firestore verisini silmek için devam ediyoruz.
       }
     }
 
-    // 3. Firestore'daki belgeyi sil
     await userDoc.ref.delete();
-
     res.json({ success: true, message: 'Hesap başarıyla silindi.' });
   } catch (err) {
     console.error("Hesap silme işlemi başarısız:", err);
     res.status(500).json({ error: 'Hesap silinirken sunucu kaynaklı bir hata oluştu.' });
   }
 });
+
+// ==========================================
+// LIVEKIT VE ODA ROUTE'LARI
+// ==========================================
 
 app.get('/api/rooms/:username', async (req, res) => {
   try {
@@ -300,7 +317,6 @@ app.get('/api/chat/:roomName', async (req, res) => {
 app.post('/api/chat', async (req, res) => {
   let { roomName, sender, message, timestamp } = req.body;
   if (!message || message.trim() === '') return res.status(400).json({ error: 'Boş mesaj gönderilemez.' });
-  
   if (message.length > 500) message = message.substring(0, 500) + '...';
 
   try {
