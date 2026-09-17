@@ -1697,3 +1697,243 @@ body {
         background: #3f4147;
         transform: translateY(-2px);
     }
+/* ==========================================================================
+   23. DASHBOARD YENİLENMESİ (SOSYAL AĞ MODU)
+   ========================================================================== */
+
+.dashboard-sidebar {
+    justify-content: flex-start;
+    padding: 30px 20px;
+}
+
+.nav-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    margin-bottom: auto;
+}
+
+.nav-btn {
+    background: transparent;
+    border: none;
+    color: #949ba4;
+    padding: 12px 15px;
+    border-radius: 8px;
+    text-align: left;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+    .nav-btn:hover {
+        background: #35373c;
+        color: white;
+    }
+
+    .nav-btn.active {
+        background: #3f4147;
+        color: white;
+    }
+
+.nav-badge {
+    background: #da373c;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+}
+
+.sidebar-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    margin-top: 30px;
+}
+
+.delete-btn {
+    background: rgba(218, 55, 60, 0.1);
+    color: #ff4d4d;
+    border-color: rgba(218, 55, 60, 0.4);
+}
+
+    .delete-btn:hover {
+        background: #da373c !important;
+        color: white !important;
+    }
+
+/* Sosyal Panel Tasarımı */
+.dashboard-content-wrapper {
+    width: 100%;
+    max-width: 600px;
+    display: flex;
+    flex-direction: column;
+}
+
+.social-wrapper h2 {
+    color: white;
+    margin-bottom: 25px;
+    border-bottom: 1px solid #3f4147;
+    padding-bottom: 15px;
+}
+
+.social-section {
+    background: #2b2d31;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid #3f4147;
+}
+
+    .social-section h4 {
+        color: #949ba4;
+        text-transform: uppercase;
+        font-size: 12px;
+        margin-bottom: 15px;
+    }
+
+.friend-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.friend-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 15px;
+    background: #1e1f22;
+    border-radius: 8px;
+    transition: 0.2s;
+}
+
+    .friend-item:hover {
+        background: #35373c;
+    }
+
+.friend-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.friend-name {
+    color: white;
+    font-weight: bold;
+    font-size: 15px;
+}
+
+.mini-avatar {
+    width: 36px !important;
+    height: 36px !important;
+    font-size: 16px !important;
+    margin: 0 !important;
+}
+
+.friend-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.icon-btn {
+    background: #2b2d31;
+    border: none;
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+    .icon-btn.success:hover {
+        background: #23a55a;
+    }
+
+    .icon-btn.danger:hover {
+        background: #da373c;
+    }
+
+.add-btn {
+    border-radius: 6px;
+    width: auto;
+    padding: 0 12px;
+    background: #5865f2;
+    color: white;
+    font-weight: bold;
+}
+
+    .add-btn:hover {
+        background: #4752c4;
+    }
+
+.dm-btn {
+    margin: 0;
+    width: auto;
+    padding: 8px 16px;
+    font-size: 13px;
+}
+
+.status-badge {
+    background: #23a55a;
+    color: white;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+    .status-badge.pending {
+        background: #e6a00f;
+    }
+
+.search-form {
+    display: flex;
+    gap: 10px;
+}
+
+.search-input {
+    flex: 1;
+    padding: 14px;
+    border-radius: 8px;
+    border: 1px solid #3f4147;
+    background: #2b2d31;
+    color: white;
+    outline: none;
+    font-size: 15px;
+}
+
+    .search-input:focus {
+        border-color: #5865f2;
+    }
+
+.search-btn {
+    margin: 0;
+    width: 100px;
+}
+
+.no-data {
+    color: #949ba4;
+    font-size: 13px;
+    font-style: italic;
+    text-align: center;
+    padding: 10px 0;
+}
+
+.absolute-toast {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 1000;
+    min-width: 250px;
+}

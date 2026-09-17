@@ -53,7 +53,10 @@ const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY;
 const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET;
 const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY;
 
-// 🟢 KAYIT (REGISTER)
+// ==========================================
+// KİMLİK DOĞRULAMA ROUTE'LARI
+// ==========================================
+
 app.post('/api/register', async (req, res) => {
   const { email, username, password } = req.body;
   if (!email || !username || !password) return res.status(400).json({ error: 'E-posta, kullanıcı adı ve şifre zorunludur.' });
@@ -64,8 +67,10 @@ app.post('/api/register', async (req, res) => {
 
     const userRecord = await auth.createUser({ email, password, displayName: username });
 
+    // 🟡 YENİ: Arkadaşlık listeleri veritabanına eklendi
     await db.collection('users').doc(userRecord.uid).set({
-      uid: userRecord.uid, email, username, createdAt: FieldValue.serverTimestamp(), rooms: []
+      uid: userRecord.uid, email, username, createdAt: FieldValue.serverTimestamp(), 
+      rooms: [], friends: [], friendRequests: [], sentRequests: []
     });
 
     if (!FIREBASE_WEB_API_KEY) throw new Error("Sunucu yapılandırma hatası (API Key Eksik).");
@@ -81,56 +86,12 @@ app.post('/api/register', async (req, res) => {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ requestType: "VERIFY_EMAIL", idToken: loginData.idToken }),
     });
-    const oobData = await oobRes.json();
-    if (!oobRes.ok) throw new Error(oobData.error?.message || "Onay maili gönderilemedi.");
+    if (!oobRes.ok) throw new Error("Onay maili gönderilemedi.");
 
     res.json({ success: true, message: 'Kayıt başarılı! Lütfen gelen kutunuzdaki onay linkine tıklayın.' });
   } catch (err) { res.status(400).json({ error: translateFirebaseError(err.message) }); }
 });
 
-// 🟡 LİNKİ TEKRAR GÖNDER (RESEND)
-app.post('/api/resend-code', async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Şifrenizi girmelisiniz.' });
-  if (!FIREBASE_WEB_API_KEY) return res.status(500).json({ error: 'Sunucu yapılandırma hatası (API Key Eksik).' });
-
-  try {
-    const loginRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, returnSecureToken: true }),
-    });
-    const loginData = await loginRes.json();
-    if (!loginRes.ok) return res.status(401).json({ error: translateFirebaseError(loginData.error?.message || '') });
-
-    const oobRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestType: "VERIFY_EMAIL", idToken: loginData.idToken }),
-    });
-    if (!oobRes.ok) { const oobData = await oobRes.json(); throw new Error(oobData.error?.message || "Mail gönderilemedi."); }
-
-    res.json({ success: true, message: 'Yeni onay linki e-postanıza gönderildi.' });
-  } catch (err) { res.status(500).json({ error: translateFirebaseError(err.message) }); }
-});
-
-// 🟣 ŞİFRE SIFIRLAMA (FORGOT PASSWORD)
-app.post('/api/reset-password', async (req, res) => {
-  const { email } = req.body;
-  if (!email) return res.status(400).json({ error: 'E-posta adresi zorunludur.' });
-  if (!FIREBASE_WEB_API_KEY) return res.status(500).json({ error: 'Sunucu yapılandırma hatası.' });
-
-  try {
-    const resetRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestType: "PASSWORD_RESET", email }),
-    });
-    const resetData = await resetRes.json();
-    if (!resetRes.ok) throw new Error(resetData.error?.message || "Şifre sıfırlama maili gönderilemedi.");
-
-    res.json({ success: true, message: 'Şifre sıfırlama bağlantısı e-posta adresinize gönderildi.' });
-  } catch (err) { res.status(500).json({ error: translateFirebaseError(err.message) }); }
-});
-
-// 🔵 GİRİŞ YAPMA (LOGIN)
 app.post('/api/login', async (req, res) => {
   const { username: identifier, password } = req.body;
   if (!identifier || !password) return res.status(400).json({ error: 'Bilgiler eksik.' });
@@ -148,7 +109,7 @@ app.post('/api/login', async (req, res) => {
       userDocData = userSnap.docs[0].data(); username = userDocData.username;
     }
 
-    if (!FIREBASE_WEB_API_KEY) return res.status(500).json({ error: 'Sunucu yapılandırma hatası (API Key Eksik).' });
+    if (!FIREBASE_WEB_API_KEY) return res.status(500).json({ error: 'Sunucu yapılandırma hatası.' });
 
     const loginRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -164,18 +125,44 @@ app.post('/api/login', async (req, res) => {
     const userInfoData = await userInfoRes.json();
 
     if (!userInfoData.users[0].emailVerified) {
-      return res.status(403).json({ error: 'Hesabınız onaylanmamış. Lütfen e-postanızdaki onay linkine tıklayın.', needsVerification: true, email: email });
+      return res.status(403).json({ error: 'Hesabınız onaylanmamış. Lütfen linke tıklayın.', needsVerification: true, email: email });
     }
 
     res.json({ success: true, username: username });
   } catch (err) { res.status(500).json({ error: 'Giriş işlemi başarısız: ' + translateFirebaseError(err.message) }); }
 });
 
-// 🔴 HESAP SİLME (DELETE ACCOUNT)
+app.post('/api/resend-code', async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    const loginRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, returnSecureToken: true }),
+    });
+    const loginData = await loginRes.json();
+    if (!loginRes.ok) return res.status(401).json({ error: translateFirebaseError(loginData.error?.message || '') });
+
+    await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestType: "VERIFY_EMAIL", idToken: loginData.idToken }),
+    });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/reset-password', async (req, res) => {
+  const { email } = req.body;
+  try {
+    await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestType: "PASSWORD_RESET", email }),
+    });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.delete('/api/delete-account', async (req, res) => {
   const { username } = req.body;
-  if (!username) return res.status(400).json({ error: 'Kullanıcı adı zorunludur.' });
-
   try {
     const userSnap = await db.collection('users').where('username', '==', username).limit(1).get();
     if (userSnap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
@@ -183,20 +170,112 @@ app.delete('/api/delete-account', async (req, res) => {
 
     if (userData.uid) { try { await auth.deleteUser(userData.uid); } catch (e) {} }
     await userDoc.ref.delete();
-    res.json({ success: true, message: 'Hesap başarıyla silindi.' });
-  } catch (err) { res.status(500).json({ error: 'Hesap silinirken sunucu kaynaklı bir hata oluştu.' }); }
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// ==========================================
+// YENİ: SOSYAL AĞ & ARKADAŞLIK ROUTE'LARI
+// ==========================================
+
+// Kullanıcı Profilini ve Arkadaşlık Durumlarını Getir
+app.get('/api/users/:username/profile', async (req, res) => {
+  try {
+    const snap = await db.collection('users').where('username', '==', req.params.username).limit(1).get();
+    if (snap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+    const data = snap.docs[0].data();
+    res.json({
+      rooms: data.rooms || [],
+      friends: data.friends || [],
+      friendRequests: data.friendRequests || [],
+      sentRequests: data.sentRequests || []
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Kişi Arama
+app.get('/api/users/search', async (req, res) => {
+  const { q, currentUsername } = req.query;
+  if (!q) return res.json({ users: [] });
+  try {
+    const snapshot = await db.collection('users')
+      .where('username', '>=', q)
+      .where('username', '<=', q + '\uf8ff')
+      .limit(10).get();
+      
+    const users = snapshot.docs
+      .map(doc => doc.data().username)
+      .filter(name => name !== currentUsername);
+    res.json({ users });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Arkadaşlık İsteği Gönder
+app.post('/api/friends/add', async (req, res) => {
+  const { sender, target } = req.body;
+  try {
+    const senderSnap = await db.collection('users').where('username', '==', sender).limit(1).get();
+    const targetSnap = await db.collection('users').where('username', '==', target).limit(1).get();
+    
+    if (senderSnap.empty || targetSnap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+    
+    const senderRef = senderSnap.docs[0].ref;
+    const targetRef = targetSnap.docs[0].ref;
+
+    await db.runTransaction(async (t) => {
+      const senderDoc = await t.get(senderRef);
+      const targetDoc = await t.get(targetRef);
+
+      const senderData = senderDoc.data();
+      const targetData = targetDoc.data();
+
+      if ((senderData.friends || []).includes(target)) throw new Error('Bu kişiyle zaten arkadaşsınız.');
+      if ((senderData.sentRequests || []).includes(target)) throw new Error('İstek zaten gönderilmiş.');
+      
+      t.update(senderRef, { sentRequests: FieldValue.arrayUnion(target) });
+      t.update(targetRef, { friendRequests: FieldValue.arrayUnion(sender) });
+    });
+
+    res.json({ success: true, message: 'Arkadaşlık isteği gönderildi.' });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// İstek Yanıtlama (Kabul/Ret)
+app.post('/api/friends/respond', async (req, res) => {
+  const { user, target, action } = req.body; // action: 'accept' | 'reject'
+  try {
+    const userSnap = await db.collection('users').where('username', '==', user).limit(1).get();
+    const targetSnap = await db.collection('users').where('username', '==', target).limit(1).get();
+    
+    if (userSnap.empty || targetSnap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+    
+    const userRef = userSnap.docs[0].ref;
+    const targetRef = targetSnap.docs[0].ref;
+
+    await db.runTransaction(async (t) => {
+      if (action === 'accept') {
+        t.update(userRef, { 
+          friends: FieldValue.arrayUnion(target),
+          friendRequests: FieldValue.arrayRemove(target) 
+        });
+        t.update(targetRef, { 
+          friends: FieldValue.arrayUnion(user),
+          sentRequests: FieldValue.arrayRemove(user) 
+        });
+      } else {
+        t.update(userRef, { friendRequests: FieldValue.arrayRemove(target) });
+        t.update(targetRef, { sentRequests: FieldValue.arrayRemove(user) });
+      }
+    });
+
+    res.json({ success: true });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
 
 // ==========================================
 // LIVEKIT VE ODA ROUTE'LARI
 // ==========================================
-app.get('/api/rooms/:username', async (req, res) => {
-  try {
-    const snap = await db.collection('users').where('username', '==', req.params.username).limit(1).get();
-    if (snap.empty) return res.json({ rooms: [] });
-    res.json({ rooms: snap.docs[0].data().rooms || [] });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
 
 app.post('/api/token', async (req, res) => {
   const { roomName, participantName, password, isGuest } = req.body;
@@ -214,7 +293,7 @@ app.post('/api/token', async (req, res) => {
       if (roomData.creator === participantName) isAdmin = true;
     }
 
-    if (!isGuest) {
+    if (!isGuest && !roomName.startsWith('DM_')) {
       const userSnap = await db.collection('users').where('username', '==', participantName).limit(1).get();
       if (!userSnap.empty) {
         let rooms = userSnap.docs[0].data().rooms || [];
