@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import nodemailer from 'nodemailer';
 import { AccessToken } from 'livekit-server-sdk';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
@@ -45,18 +44,45 @@ app.use(express.json());
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY;
 const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET;
 const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY;
+const RESEND_API_KEY = process.env.RESEND_API_KEY ? process.env.RESEND_API_KEY.trim() : '';
 
-// 2. E-Posta Gönderici ve ENV Değişkenleri Temizliği
-// Render'dan gelen gizli tırnak işaretlerini veya boşlukları zorla siler
-const MAIL_USER = (process.env.EMAIL_USER || '').replace(/['"\s]+/g, '');
-const MAIL_PASS = (process.env.EMAIL_PASS || '').replace(/['"\s]+/g, '');
+// 2. Resend HTTPS E-Posta Gönderici Fonksiyonu (Port Engellerine Takılmaz)
+async function sendVerificationEmail(toEmail, username, code) {
+  if (!RESEND_API_KEY) {
+    throw new Error("Render üzerinde RESEND_API_KEY tanımlanmamış.");
+  }
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
-  auth: { user: MAIL_USER, pass: MAIL_PASS }
-});
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${RESEND_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      from: 'Sesli Oda <onboarding@resend.dev>',
+      to: [toEmail],
+      subject: 'Sesli Oda - E-posta Doğrulama Kodu',
+      html: `
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; background-color: #1e1f22; color: #f2f3f5; border-radius: 12px; border: 1px solid #313338;">
+          <h2 style="color: #5865F2; text-align: center; margin-bottom: 20px;">Aramıza Hoş Geldin, ${username}!</h2>
+          <p style="font-size: 15px; line-height: 1.6;">Sesli Oda hesabını doğrulamak için aşağıdaki 6 haneli güvenlik kodunu kullanabilirsin:</p>
+          <div style="background-color: #2b2d31; padding: 20px; font-size: 32px; font-weight: bold; letter-spacing: 8px; text-align: center; border-radius: 8px; margin: 30px 0; color: #ffffff; border: 1px solid #3f4147;">
+            ${code}
+          </div>
+          <p style="font-size: 13px; color: #949ba4; text-align: center; border-top: 1px solid #313338; padding-top: 20px; margin-top: 30px;">
+            Bu işlemi sen başlatmadıysan, bu e-postayı görmezden gelebilirsin.
+          </p>
+        </div>
+      `
+    })
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Resend üzerinden mail iletilemedi.');
+  }
+  return data;
+}
 
 // ==========================================
 // API ROUTE'LARI
@@ -69,11 +95,12 @@ app.post('/api/register', async (req, res) => {
   if (username.length < 3 || username.length > 20) return res.status(400).json({ error: 'Kullanıcı adı 3 ile 20 karakter arasında olmalıdır.' });
   if (password.length < 6) return res.status(400).json({ error: 'Şifre en az 6 karakter olmalıdır.' });
 
+  let userRecord = null;
   try {
     const usernameCheck = await db.collection('users').where('username', '==', username).get();
     if (!usernameCheck.empty) return res.status(400).json({ error: 'Bu kullanıcı adı zaten kullanımda.' });
 
-    const userRecord = await auth.createUser({ email, password, displayName: username });
+    userRecord = await auth.createUser({ email, password, displayName: username });
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     await db.collection('users').doc(userRecord.uid).set({
@@ -86,32 +113,14 @@ app.post('/api/register', async (req, res) => {
       rooms: []
     });
 
-    // 🔴 KRİTİK KONTROL: Değişkenler Render'dan gelmiyorsa işlemi iptal et!
-    if (!MAIL_USER || !MAIL_PASS) {
-      await auth.deleteUser(userRecord.uid).catch(()=>{});
-      await db.collection('users').doc(userRecord.uid).delete().catch(()=>{});
-      return res.status(500).json({ error: 'Sistem Hatası: EMAIL değişkenleri eksik. Render panelinden Environment Group bağlantısını kontrol edin.' });
-    }
-
+    // Resend ile Mail Gönderimi
     try {
-      await transporter.sendMail({
-        from: `"Sesli Oda Ekibi" <${MAIL_USER}>`,
-        to: email,
-        subject: 'Sesli Oda - E-posta Doğrulama Kodu',
-        html: `
-          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; background-color: #1e1f22; color: #f2f3f5; border-radius: 12px; border: 1px solid #313338;">
-            <h2 style="color: #5865F2; text-align: center; margin-bottom: 20px;">Aramıza Hoş Geldin, ${username}!</h2>
-            <p style="font-size: 15px; line-height: 1.6;">Sesli Oda hesabını doğrulamak için aşağıdaki 6 haneli güvenlik kodunu kullanabilirsin:</p>
-            <div style="background-color: #2b2d31; padding: 20px; font-size: 32px; font-weight: bold; letter-spacing: 8px; text-align: center; border-radius: 8px; margin: 30px 0; color: #ffffff; border: 1px solid #3f4147;">
-              ${verificationCode}
-            </div>
-          </div>
-        `
-      });
+      await sendVerificationEmail(email, username, verificationCode);
+      console.log(`[RESEND BAŞARILI] Doğrulama kodu gönderildi: ${email}`);
     } catch (mailError) {
-      console.error("[NODEMAILER HATASI]:", mailError.message);
-      await auth.deleteUser(userRecord.uid).catch(()=>{});
-      await db.collection('users').doc(userRecord.uid).delete().catch(()=>{});
+      console.error("[RESEND HATASI]:", mailError.message);
+      await auth.deleteUser(userRecord.uid).catch(() => {});
+      await db.collection('users').doc(userRecord.uid).delete().catch(() => {});
       return res.status(500).json({ error: `Mail gönderilemedi: ${mailError.message}` });
     }
 
@@ -138,30 +147,15 @@ app.post('/api/resend-code', async (req, res) => {
     const newCode = Math.floor(100000 + Math.random() * 900000).toString();
     await userDoc.ref.update({ verificationCode: newCode });
 
-    if (!MAIL_USER || !MAIL_PASS) {
-      return res.status(500).json({ error: 'Sistem Hatası: EMAIL değişkenleri eksik.' });
-    }
-
     try {
-      await transporter.sendMail({
-        from: `"Sesli Oda Ekibi" <${MAIL_USER}>`,
-        to: email,
-        subject: 'Sesli Oda - Yeni Doğrulama Kodunuz',
-        html: `
-          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; background-color: #1e1f22; color: #f2f3f5; border-radius: 12px; border: 1px solid #313338;">
-            <h2 style="color: #5865F2; text-align: center; margin-bottom: 20px;">Yeni Kodunuz Hazır!</h2>
-            <p style="font-size: 15px; line-height: 1.6;">Sesli Oda hesabınızı doğrulamak için talep ettiğiniz yeni kodunuz aşağıdadır:</p>
-            <div style="background-color: #2b2d31; padding: 20px; font-size: 32px; font-weight: bold; letter-spacing: 8px; text-align: center; border-radius: 8px; margin: 30px 0; color: #ffffff; border: 1px solid #3f4147;">
-              ${newCode}
-            </div>
-          </div>
-        `
-      });
+      await sendVerificationEmail(email, userData.username, newCode);
+      console.log(`[RESEND BAŞARILI] Yeni kod gönderildi: ${email}`);
     } catch (mailError) {
-      return res.status(500).json({ error: `Mail sunucusuna bağlanılamadı: ${mailError.message}` });
+      console.error("[RESEND HATASI]:", mailError.message);
+      return res.status(500).json({ error: `Mail iletilemedi: ${mailError.message}` });
     }
 
-    res.json({ success: true, message: 'Yeni doğrulama kodu gönderildi.' });
+    res.json({ success: true, message: 'Yeni doğrulama kodu e-postanıza gönderildi.' });
   } catch (err) {
     res.status(500).json({ error: 'Kod gönderilirken bir hata oluştu.' });
   }
@@ -180,7 +174,7 @@ app.post('/api/verify-email', async (req, res) => {
     const userData = userDoc.data();
 
     if (userData.isVerified) return res.status(400).json({ error: 'Bu e-posta adresi zaten doğrulanmış.' });
-    if (userData.verificationCode !== code) return res.status(400).json({ error: 'Geçersiz doğrulama kodu!' });
+    if (userData.verificationCode !== code.trim()) return res.status(400).json({ error: 'Geçersiz doğrulama kodu!' });
 
     await userDoc.ref.update({
       isVerified: true,
@@ -210,11 +204,11 @@ app.post('/api/login', async (req, res) => {
       email = userDocData.email;
       username = userDocData.username;
     } else {
-       const userSnap = await db.collection('users').where('email', '==', email).limit(1).get();
-       if (!userSnap.empty) {
-         userDocData = userSnap.docs[0].data();
-         username = userDocData.username;
-       }
+      const userSnap = await db.collection('users').where('email', '==', email).limit(1).get();
+      if (!userSnap.empty) {
+        userDocData = userSnap.docs[0].data();
+        username = userDocData.username;
+      }
     }
 
     if (userDocData && userDocData.isVerified === false) {
@@ -264,6 +258,7 @@ app.delete('/api/delete-account', async (req, res) => {
     await userDoc.ref.delete();
     res.json({ success: true, message: 'Hesap başarıyla silindi.' });
   } catch (err) {
+    console.error("Hesap silme işlemi başarısız:", err);
     res.status(500).json({ error: 'Hesap silinirken sunucu kaynaklı bir hata oluştu.' });
   }
 });
