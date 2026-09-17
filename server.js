@@ -52,12 +52,15 @@ const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY;
 const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET;
 const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY;
 
-// 2. E-Posta Gönderici (Nodemailer Transporter)
+// 2. E-Posta Gönderici (Nodemailer Transporter) - PORT 465 & BOŞLUK TEMİZLİĞİ EKLENDİ
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true, // SSL/TLS aktif (Render port engellerini aşar)
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
+    user: process.env.EMAIL_USER ? process.env.EMAIL_USER.trim() : '',
+    // 🔴 KRİTİK: Google Uygulama Şifresindeki boşlukları zorla siler
+    pass: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.replace(/\s+/g, '') : '' 
   }
 });
 
@@ -77,9 +80,13 @@ app.post('/api/register', async (req, res) => {
     const usernameCheck = await db.collection('users').where('username', '==', username).get();
     if (!usernameCheck.empty) return res.status(400).json({ error: 'Bu kullanıcı adı zaten kullanımda.' });
 
+    // Firebase'de Kullanıcı Oluşturma
     const userRecord = await auth.createUser({ email, password, displayName: username });
+    
+    // 6 Haneli Rastgele Doğrulama Kodu Üretme
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
 
+    // Veritabanına isVerified: false olarak kaydetme
     await db.collection('users').doc(userRecord.uid).set({
       uid: userRecord.uid,
       email,
@@ -90,10 +97,11 @@ app.post('/api/register', async (req, res) => {
       rooms: []
     });
 
+    // E-posta Gönderimi
     if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
       try {
         await transporter.sendMail({
-          from: `"Sesli Oda Ekibi" <${process.env.EMAIL_USER}>`,
+          from: `"Sesli Oda Ekibi" <${process.env.EMAIL_USER.trim()}>`,
           to: email,
           subject: 'Sesli Oda - E-posta Doğrulama Kodu',
           html: `
@@ -114,15 +122,16 @@ app.post('/api/register', async (req, res) => {
         console.log(`[BAŞARILI] ${email} adresine doğrulama maili gönderildi.`);
       } catch (mailError) {
         console.error("[NODEMAILER HATASI]: E-posta gönderilemedi -", mailError.message);
+        // İşlem İptali (Rollback)
         await auth.deleteUser(userRecord.uid);
         await db.collection('users').doc(userRecord.uid).delete();
         return res.status(500).json({ error: 'Mail sunucusuna bağlanılamadı. Uygulama şifrenizi kontrol edin.' });
       }
     } else {
-      console.warn(`[UYARI] EMAIL_USER veya EMAIL_PASS eksik!`);
+      console.warn(`[UYARI] EMAIL_USER veya EMAIL_PASS eksik! Çevrimdışı Test modunda çalışıyor.`);
     }
 
-    res.json({ success: true, message: 'Kayıt başarılı!' });
+    res.json({ success: true, message: 'Kayıt başarılı! Lütfen e-postanıza gelen doğrulama kodunu girin.' });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -140,15 +149,20 @@ app.post('/api/verify-email', async (req, res) => {
     const userDoc = userSnap.docs[0];
     const userData = userDoc.data();
 
-    if (userData.isVerified) return res.status(400).json({ error: 'Bu e-posta adresi zaten doğrulanmış.' });
-    if (userData.verificationCode !== code) return res.status(400).json({ error: 'Geçersiz doğrulama kodu!' });
+    if (userData.isVerified) {
+      return res.status(400).json({ error: 'Bu e-posta adresi zaten doğrulanmış.' });
+    }
+
+    if (userData.verificationCode !== code) {
+      return res.status(400).json({ error: 'Geçersiz doğrulama kodu!' });
+    }
 
     await userDoc.ref.update({
       isVerified: true,
       verificationCode: FieldValue.delete()
     });
 
-    res.json({ success: true, message: 'E-posta başarıyla doğrulandı!' });
+    res.json({ success: true, message: 'E-posta başarıyla doğrulandı! Şimdi giriş yapabilirsiniz.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -172,25 +186,32 @@ app.post('/api/resend-code', async (req, res) => {
     await userDoc.ref.update({ verificationCode: newCode });
 
     if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-      await transporter.sendMail({
-        from: `"Sesli Oda Ekibi" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: 'Sesli Oda - Yeni Doğrulama Kodunuz',
-        html: `
-          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; background-color: #1e1f22; color: #f2f3f5; border-radius: 12px; border: 1px solid #313338;">
-            <h2 style="color: #5865F2; text-align: center; margin-bottom: 20px;">Yeni Kodunuz Hazır!</h2>
-            <p style="font-size: 15px; line-height: 1.6;">Sesli Oda hesabınızı doğrulamak için talep ettiğiniz yeni kodunuz aşağıdadır:</p>
-            
-            <div style="background-color: #2b2d31; padding: 20px; font-size: 32px; font-weight: bold; letter-spacing: 8px; text-align: center; border-radius: 8px; margin: 30px 0; color: #ffffff; border: 1px solid #3f4147;">
-              ${newCode}
+      try {
+        await transporter.sendMail({
+          from: `"Sesli Oda Ekibi" <${process.env.EMAIL_USER.trim()}>`,
+          to: email,
+          subject: 'Sesli Oda - Yeni Doğrulama Kodunuz',
+          html: `
+            <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; background-color: #1e1f22; color: #f2f3f5; border-radius: 12px; border: 1px solid #313338;">
+              <h2 style="color: #5865F2; text-align: center; margin-bottom: 20px;">Yeni Kodunuz Hazır!</h2>
+              <p style="font-size: 15px; line-height: 1.6;">Sesli Oda hesabınızı doğrulamak için talep ettiğiniz yeni kodunuz aşağıdadır:</p>
+              
+              <div style="background-color: #2b2d31; padding: 20px; font-size: 32px; font-weight: bold; letter-spacing: 8px; text-align: center; border-radius: 8px; margin: 30px 0; color: #ffffff; border: 1px solid #3f4147;">
+                ${newCode}
+              </div>
             </div>
-          </div>
-        `
-      });
+          `
+        });
+        console.log(`[BAŞARILI] Yeni kod gönderildi: ${email}`);
+      } catch (mailError) {
+        console.error("[NODEMAILER HATASI] Yeni kod gönderilemedi:", mailError);
+        return res.status(500).json({ error: 'Mail sunucusuna bağlanılamadı. Uygulama şifrenizi kontrol edin.' });
+      }
     }
 
     res.json({ success: true, message: 'Yeni doğrulama kodu gönderildi.' });
   } catch (err) {
+    console.error("Genel Hata:", err);
     res.status(500).json({ error: 'Kod gönderilirken bir hata oluştu.' });
   }
 });
@@ -219,7 +240,6 @@ app.post('/api/login', async (req, res) => {
        }
     }
 
-    // 🔴 KRİTİK GÜNCELLEME: Frontend'e Doğrulama İçin Email Parametresi Gönderiliyor
     if (userDocData && userDocData.isVerified === false) {
       return res.status(403).json({ 
         error: 'Hesabınız henüz doğrulanmamış. Lütfen kodunuzu girin.',
