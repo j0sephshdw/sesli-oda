@@ -23,19 +23,13 @@ try {
   let serviceAccount;
 
   if (existsSync(renderSecretPath)) {
-    console.log("Render: Secret File dizininden okunuyor...");
     serviceAccount = JSON.parse(readFileSync(renderSecretPath, 'utf8'));
   } else if (existsSync(localSecretPath)) {
-    console.log("Lokal: Çalışma dizininden okunuyor...");
     serviceAccount = JSON.parse(readFileSync(localSecretPath, 'utf8'));
   } else {
     throw new Error("serviceAccountKey.json dosyası hiçbir konumda bulunamadı!");
   }
-  
-  firebaseApp = initializeApp({
-    credential: cert(serviceAccount)
-  });
-  console.log("Firebase Admin başarıyla başlatıldı.");
+  firebaseApp = initializeApp({ credential: cert(serviceAccount) });
 } catch (error) {
   console.error("KRİTİK HATA: Firebase bağlantısı kurulamadı!", error.message);
   process.exit(1);
@@ -52,16 +46,16 @@ const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY;
 const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET;
 const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY;
 
-// 2. E-Posta Gönderici (Nodemailer Transporter) - PORT 465 & BOŞLUK TEMİZLİĞİ EKLENDİ
+// 2. E-Posta Gönderici ve ENV Değişkenleri Temizliği
+// Render'dan gelen gizli tırnak işaretlerini veya boşlukları zorla siler
+const MAIL_USER = (process.env.EMAIL_USER || '').replace(/['"\s]+/g, '');
+const MAIL_PASS = (process.env.EMAIL_PASS || '').replace(/['"\s]+/g, '');
+
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 465,
-  secure: true, // SSL/TLS aktif (Render port engellerini aşar)
-  auth: {
-    user: process.env.EMAIL_USER ? process.env.EMAIL_USER.trim() : '',
-    // 🔴 KRİTİK: Google Uygulama Şifresindeki boşlukları zorla siler
-    pass: process.env.EMAIL_PASS ? process.env.EMAIL_PASS.replace(/\s+/g, '') : '' 
-  }
+  secure: true,
+  auth: { user: MAIL_USER, pass: MAIL_PASS }
 });
 
 // ==========================================
@@ -72,7 +66,6 @@ const transporter = nodemailer.createTransport({
 app.post('/api/register', async (req, res) => {
   const { email, username, password } = req.body;
   if (!email || !username || !password) return res.status(400).json({ error: 'E-posta, kullanıcı adı ve şifre zorunludur.' });
-
   if (username.length < 3 || username.length > 20) return res.status(400).json({ error: 'Kullanıcı adı 3 ile 20 karakter arasında olmalıdır.' });
   if (password.length < 6) return res.status(400).json({ error: 'Şifre en az 6 karakter olmalıdır.' });
 
@@ -80,13 +73,9 @@ app.post('/api/register', async (req, res) => {
     const usernameCheck = await db.collection('users').where('username', '==', username).get();
     if (!usernameCheck.empty) return res.status(400).json({ error: 'Bu kullanıcı adı zaten kullanımda.' });
 
-    // Firebase'de Kullanıcı Oluşturma
     const userRecord = await auth.createUser({ email, password, displayName: username });
-    
-    // 6 Haneli Rastgele Doğrulama Kodu Üretme
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Veritabanına isVerified: false olarak kaydetme
     await db.collection('users').doc(userRecord.uid).set({
       uid: userRecord.uid,
       email,
@@ -97,74 +86,38 @@ app.post('/api/register', async (req, res) => {
       rooms: []
     });
 
-    // E-posta Gönderimi
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-      try {
-        await transporter.sendMail({
-          from: `"Sesli Oda Ekibi" <${process.env.EMAIL_USER.trim()}>`,
-          to: email,
-          subject: 'Sesli Oda - E-posta Doğrulama Kodu',
-          html: `
-            <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; background-color: #1e1f22; color: #f2f3f5; border-radius: 12px; border: 1px solid #313338;">
-              <h2 style="color: #5865F2; text-align: center; margin-bottom: 20px;">Aramıza Hoş Geldin, ${username}!</h2>
-              <p style="font-size: 15px; line-height: 1.6;">Sesli Oda hesabını doğrulamak ve kesintisiz sohbete başlamak için aşağıdaki 6 haneli güvenlik kodunu kullanabilirsin:</p>
-              
-              <div style="background-color: #2b2d31; padding: 20px; font-size: 32px; font-weight: bold; letter-spacing: 8px; text-align: center; border-radius: 8px; margin: 30px 0; color: #ffffff; border: 1px solid #3f4147;">
-                ${verificationCode}
-              </div>
-              
-              <p style="font-size: 13px; color: #949ba4; text-align: center; border-top: 1px solid #313338; padding-top: 20px; margin-top: 30px;">
-                Eğer bu kayıt işlemini sen başlatmadıysan, bu e-postayı güvenle görmezden gelebilirsin.
-              </p>
+    // 🔴 KRİTİK KONTROL: Değişkenler Render'dan gelmiyorsa işlemi iptal et!
+    if (!MAIL_USER || !MAIL_PASS) {
+      await auth.deleteUser(userRecord.uid).catch(()=>{});
+      await db.collection('users').doc(userRecord.uid).delete().catch(()=>{});
+      return res.status(500).json({ error: 'Sistem Hatası: EMAIL değişkenleri eksik. Render panelinden Environment Group bağlantısını kontrol edin.' });
+    }
+
+    try {
+      await transporter.sendMail({
+        from: `"Sesli Oda Ekibi" <${MAIL_USER}>`,
+        to: email,
+        subject: 'Sesli Oda - E-posta Doğrulama Kodu',
+        html: `
+          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; background-color: #1e1f22; color: #f2f3f5; border-radius: 12px; border: 1px solid #313338;">
+            <h2 style="color: #5865F2; text-align: center; margin-bottom: 20px;">Aramıza Hoş Geldin, ${username}!</h2>
+            <p style="font-size: 15px; line-height: 1.6;">Sesli Oda hesabını doğrulamak için aşağıdaki 6 haneli güvenlik kodunu kullanabilirsin:</p>
+            <div style="background-color: #2b2d31; padding: 20px; font-size: 32px; font-weight: bold; letter-spacing: 8px; text-align: center; border-radius: 8px; margin: 30px 0; color: #ffffff; border: 1px solid #3f4147;">
+              ${verificationCode}
             </div>
-          `
-        });
-        console.log(`[BAŞARILI] ${email} adresine doğrulama maili gönderildi.`);
-      } catch (mailError) {
-        console.error("[NODEMAILER HATASI]: E-posta gönderilemedi -", mailError.message);
-        // İşlem İptali (Rollback)
-        await auth.deleteUser(userRecord.uid);
-        await db.collection('users').doc(userRecord.uid).delete();
-        return res.status(500).json({ error: 'Mail sunucusuna bağlanılamadı. Uygulama şifrenizi kontrol edin.' });
-      }
-    } else {
-      console.warn(`[UYARI] EMAIL_USER veya EMAIL_PASS eksik! Çevrimdışı Test modunda çalışıyor.`);
+          </div>
+        `
+      });
+    } catch (mailError) {
+      console.error("[NODEMAILER HATASI]:", mailError.message);
+      await auth.deleteUser(userRecord.uid).catch(()=>{});
+      await db.collection('users').doc(userRecord.uid).delete().catch(()=>{});
+      return res.status(500).json({ error: `Mail gönderilemedi: ${mailError.message}` });
     }
 
     res.json({ success: true, message: 'Kayıt başarılı! Lütfen e-postanıza gelen doğrulama kodunu girin.' });
   } catch (err) {
     res.status(400).json({ error: err.message });
-  }
-});
-
-// 🟠 E-POSTA DOĞRULAMA (VERIFY-EMAIL)
-app.post('/api/verify-email', async (req, res) => {
-  const { email, code } = req.body;
-  if (!email || !code) return res.status(400).json({ error: 'E-posta ve doğrulama kodu zorunludur.' });
-
-  try {
-    const userSnap = await db.collection('users').where('email', '==', email).limit(1).get();
-    if (userSnap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
-
-    const userDoc = userSnap.docs[0];
-    const userData = userDoc.data();
-
-    if (userData.isVerified) {
-      return res.status(400).json({ error: 'Bu e-posta adresi zaten doğrulanmış.' });
-    }
-
-    if (userData.verificationCode !== code) {
-      return res.status(400).json({ error: 'Geçersiz doğrulama kodu!' });
-    }
-
-    await userDoc.ref.update({
-      isVerified: true,
-      verificationCode: FieldValue.delete()
-    });
-
-    res.json({ success: true, message: 'E-posta başarıyla doğrulandı! Şimdi giriş yapabilirsiniz.' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
   }
 });
 
@@ -185,34 +138,58 @@ app.post('/api/resend-code', async (req, res) => {
     const newCode = Math.floor(100000 + Math.random() * 900000).toString();
     await userDoc.ref.update({ verificationCode: newCode });
 
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-      try {
-        await transporter.sendMail({
-          from: `"Sesli Oda Ekibi" <${process.env.EMAIL_USER.trim()}>`,
-          to: email,
-          subject: 'Sesli Oda - Yeni Doğrulama Kodunuz',
-          html: `
-            <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; background-color: #1e1f22; color: #f2f3f5; border-radius: 12px; border: 1px solid #313338;">
-              <h2 style="color: #5865F2; text-align: center; margin-bottom: 20px;">Yeni Kodunuz Hazır!</h2>
-              <p style="font-size: 15px; line-height: 1.6;">Sesli Oda hesabınızı doğrulamak için talep ettiğiniz yeni kodunuz aşağıdadır:</p>
-              
-              <div style="background-color: #2b2d31; padding: 20px; font-size: 32px; font-weight: bold; letter-spacing: 8px; text-align: center; border-radius: 8px; margin: 30px 0; color: #ffffff; border: 1px solid #3f4147;">
-                ${newCode}
-              </div>
+    if (!MAIL_USER || !MAIL_PASS) {
+      return res.status(500).json({ error: 'Sistem Hatası: EMAIL değişkenleri eksik.' });
+    }
+
+    try {
+      await transporter.sendMail({
+        from: `"Sesli Oda Ekibi" <${MAIL_USER}>`,
+        to: email,
+        subject: 'Sesli Oda - Yeni Doğrulama Kodunuz',
+        html: `
+          <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 500px; margin: 0 auto; padding: 25px; background-color: #1e1f22; color: #f2f3f5; border-radius: 12px; border: 1px solid #313338;">
+            <h2 style="color: #5865F2; text-align: center; margin-bottom: 20px;">Yeni Kodunuz Hazır!</h2>
+            <p style="font-size: 15px; line-height: 1.6;">Sesli Oda hesabınızı doğrulamak için talep ettiğiniz yeni kodunuz aşağıdadır:</p>
+            <div style="background-color: #2b2d31; padding: 20px; font-size: 32px; font-weight: bold; letter-spacing: 8px; text-align: center; border-radius: 8px; margin: 30px 0; color: #ffffff; border: 1px solid #3f4147;">
+              ${newCode}
             </div>
-          `
-        });
-        console.log(`[BAŞARILI] Yeni kod gönderildi: ${email}`);
-      } catch (mailError) {
-        console.error("[NODEMAILER HATASI] Yeni kod gönderilemedi:", mailError);
-        return res.status(500).json({ error: 'Mail sunucusuna bağlanılamadı. Uygulama şifrenizi kontrol edin.' });
-      }
+          </div>
+        `
+      });
+    } catch (mailError) {
+      return res.status(500).json({ error: `Mail sunucusuna bağlanılamadı: ${mailError.message}` });
     }
 
     res.json({ success: true, message: 'Yeni doğrulama kodu gönderildi.' });
   } catch (err) {
-    console.error("Genel Hata:", err);
     res.status(500).json({ error: 'Kod gönderilirken bir hata oluştu.' });
+  }
+});
+
+// 🟠 E-POSTA DOĞRULAMA (VERIFY-EMAIL)
+app.post('/api/verify-email', async (req, res) => {
+  const { email, code } = req.body;
+  if (!email || !code) return res.status(400).json({ error: 'E-posta ve doğrulama kodu zorunludur.' });
+
+  try {
+    const userSnap = await db.collection('users').where('email', '==', email).limit(1).get();
+    if (userSnap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+
+    const userDoc = userSnap.docs[0];
+    const userData = userDoc.data();
+
+    if (userData.isVerified) return res.status(400).json({ error: 'Bu e-posta adresi zaten doğrulanmış.' });
+    if (userData.verificationCode !== code) return res.status(400).json({ error: 'Geçersiz doğrulama kodu!' });
+
+    await userDoc.ref.update({
+      isVerified: true,
+      verificationCode: FieldValue.delete()
+    });
+
+    res.json({ success: true, message: 'E-posta başarıyla doğrulandı! Şimdi giriş yapabilirsiniz.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -287,7 +264,6 @@ app.delete('/api/delete-account', async (req, res) => {
     await userDoc.ref.delete();
     res.json({ success: true, message: 'Hesap başarıyla silindi.' });
   } catch (err) {
-    console.error("Hesap silme işlemi başarısız:", err);
     res.status(500).json({ error: 'Hesap silinirken sunucu kaynaklı bir hata oluştu.' });
   }
 });
@@ -376,18 +352,12 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// ==========================================
-// REACT FRONTEND SUNUCUSU
-// ==========================================
-
 app.use(express.static(path.join(__dirname, 'dist')));
 
 app.get('*', (req, res) => {
-  if (req.path.startsWith('/api/')) {
-    return res.status(404).json({ error: 'API endpoint bulunamadı.' });
-  }
+  if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'API endpoint bulunamadı.' });
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`🚀 Sunucu ${PORT} portunda çalışıyor. (Full-Stack Mod)`));
+app.listen(PORT, () => console.log(`🚀 Sunucu ${PORT} portunda çalışıyor.`));
