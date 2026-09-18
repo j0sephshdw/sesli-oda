@@ -1,11 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import { AccessToken } from 'livekit-server-sdk';
-import { initializeApp, cert } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-import { readFileSync, existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -14,317 +13,267 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
-const translateFirebaseError = (errMessage) => {
-  const msg = errMessage.toLowerCase();
-  if (msg.includes('email-already-exists') || msg.includes('email_exists')) return 'Bu e-posta adresi ile zaten bir hesap mevcut.';
-  if (msg.includes('invalid-email')) return 'Lütfen geçerli bir e-posta adresi girin.';
-  if (msg.includes('weak-password')) return 'Şifreniz çok zayıf. Lütfen daha güçlü bir şifre belirleyin.';
-  if (msg.includes('user-not-found') || msg.includes('email_not_found')) return 'Bu bilgilere ait bir hesap bulunamadı.';
-  if (msg.includes('invalid-password') || msg.includes('wrong-password') || msg.includes('invalid_login_credentials')) return 'Şifreniz hatalı. Lütfen tekrar deneyin.';
-  if (msg.includes('too-many-requests')) return 'Çok fazla başarısız deneme yaptınız. Lütfen biraz bekleyin.';
-  return 'İşlem sırasında bir hata oluştu: ' + errMessage;
-};
-
-let firebaseApp;
-try {
-  const renderSecretPath = '/etc/secrets/serviceAccountKey.json';
-  const localSecretPath = path.join(__dirname, 'serviceAccountKey.json');
-  let serviceAccount;
-
-  if (existsSync(renderSecretPath)) serviceAccount = JSON.parse(readFileSync(renderSecretPath, 'utf8'));
-  else if (existsSync(localSecretPath)) serviceAccount = JSON.parse(readFileSync(localSecretPath, 'utf8'));
-  else throw new Error("serviceAccountKey.json dosyası bulunamadı!");
-  
-  firebaseApp = initializeApp({ credential: cert(serviceAccount) });
-} catch (error) {
-  console.error("KRİTİK HATA: Firebase bağlantısı kurulamadı!", error.message);
-  process.exit(1);
-}
-
-const auth = getAuth(firebaseApp);
-const db = getFirestore(firebaseApp);
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
+const PORT = process.env.PORT || 3001;
+const MONGO_URI = process.env.MONGO_URI;
+const JWT_SECRET = process.env.JWT_SECRET || 'cok_gizli_anahtar_degistirin';
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY;
 const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET;
-const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY;
 
 // ==========================================
-// KİMLİK DOĞRULAMA ROUTE'LARI
+// MONGODB VERİ MODELLERİ (SCHEMAS)
 // ==========================================
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true, index: true },
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  bio: { type: String, default: 'Merhaba! Ben Sesli Oda kullanıyorum.' },
+  color: { type: String, default: '#5865F2' },
+  customStatus: { type: String, default: '' },
+  currentRoom: { type: String, default: null },
+  lastActive: { type: Date, default: Date.now },
+  rooms: { type: [String], default: [] },
+  friends: { type: [String], default: [] },
+  friendRequests: { type: [String], default: [] },
+  sentRequests: { type: [String], default: [] },
+  unreadDMs: { type: Map, of: Number, default: {} }
+}, { timestamps: true });
 
+const messageSchema = new mongoose.Schema({
+  roomName: { type: String, required: true, index: true },
+  sender: { type: String, required: true },
+  message: { type: String, required: true },
+  timestamp: { type: Number, required: true }
+});
+
+const roomSchema = new mongoose.Schema({
+  name: { type: String, required: true, unique: true },
+  creator: { type: String, required: true },
+  password: { type: String, default: '' }
+}, { timestamps: true });
+
+const User = mongoose.model('User', userSchema);
+const Message = mongoose.model('Message', messageSchema);
+const Room = mongoose.model('Room', roomSchema);
+
+// ==========================================
+// VERİTABANI BAĞLANTISI
+// ==========================================
+if (!MONGO_URI) {
+  console.error("KRİTİK HATA: MONGO_URI çevre değişkeni eksik!");
+  process.exit(1);
+}
+
+mongoose.connect(MONGO_URI)
+  .then(() => console.log("🚀 MongoDB Atlas bağlantısı başarıyla kuruldu."))
+  .catch(err => {
+    console.error("MongoDB Bağlantı Hatası:", err.message);
+    process.exit(1);
+  });
+
+// ==========================================
+// KİMLİK DOĞRULAMA (AUTH) ROUTE'LARI
+// ==========================================
 app.post('/api/register', async (req, res) => {
   const { email, username, password } = req.body;
-  if (!email || !username || !password) return res.status(400).json({ error: 'E-posta, kullanıcı adı ve şifre zorunludur.' });
+  if (!email || !username || !password) {
+    return res.status(400).json({ error: 'E-posta, kullanıcı adı ve şifre zorunludur.' });
+  }
 
   try {
-    const usernameCheck = await db.collection('users').where('username', '==', username).get();
-    if (!usernameCheck.empty) return res.status(400).json({ error: 'Bu kullanıcı adı zaten kullanımda. Lütfen başka bir ad seçin.' });
+    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+    if (existingUser) {
+      if (existingUser.username === username) return res.status(400).json({ error: 'Bu kullanıcı adı zaten alınmış.' });
+      return res.status(400).json({ error: 'Bu e-posta adresiyle kayıtlı bir hesap var.' });
+    }
 
-    const userRecord = await auth.createUser({ email, password, displayName: username });
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = new User({ email, username, password: hashedPassword });
+    await newUser.save();
 
-    await db.collection('users').doc(userRecord.uid).set({
-      uid: userRecord.uid, email, username, createdAt: FieldValue.serverTimestamp(), 
-      lastActive: FieldValue.serverTimestamp(),
-      rooms: [], friends: [], friendRequests: [], sentRequests: [], unreadDMs: {}, 
-      bio: 'Merhaba! Ben Sesli Oda kullanıyorum.', color: '#5865F2', customStatus: ''
-    });
-
-    const loginRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, returnSecureToken: true }),
-    });
-    const loginData = await loginRes.json();
-    if (!loginRes.ok) throw new Error(loginData.error?.message || "Doğrulama token'ı alınamadı.");
-
-    await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestType: "VERIFY_EMAIL", idToken: loginData.idToken }),
-    });
-
-    res.json({ success: true, message: 'Kayıt başarılı! Lütfen gelen kutunuzdaki onay linkine tıklayın.' });
-  } catch (err) { res.status(400).json({ error: translateFirebaseError(err.message) }); }
+    const token = jwt.sign({ username: newUser.username }, JWT_SECRET, { expiresIn: '30d' });
+    res.json({ success: true, token, username: newUser.username });
+  } catch (err) {
+    res.status(500).json({ error: 'Kayıt sırasında bir hata oluştu: ' + err.message });
+  }
 });
 
 app.post('/api/login', async (req, res) => {
   const { username: identifier, password } = req.body;
+  if (!identifier || !password) return res.status(400).json({ error: 'Bilgiler eksik.' });
+
   try {
-    let email = identifier; let username = identifier; let userRef = null;
-
-    if (!identifier.includes('@')) {
-      const userSnap = await db.collection('users').where('username', '==', identifier).limit(1).get();
-      if (userSnap.empty) return res.status(404).json({ error: 'Bu kullanıcı adıyla kayıtlı bir hesap bulunamadı.' });
-      email = userSnap.docs[0].data().email; username = userSnap.docs[0].data().username; userRef = userSnap.docs[0].ref;
-    } else {
-      const userSnap = await db.collection('users').where('email', '==', email).limit(1).get();
-      if (userSnap.empty) return res.status(404).json({ error: 'Bu e-posta ile kayıtlı bir hesap bulunamadı.' });
-      username = userSnap.docs[0].data().username; userRef = userSnap.docs[0].ref;
-    }
-
-    const loginRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, returnSecureToken: true }),
+    const user = await User.findOne({
+      $or: [{ email: identifier }, { username: identifier }]
     });
-    const loginData = await loginRes.json();
-    if (!loginRes.ok) return res.status(401).json({ error: translateFirebaseError(loginData.error?.message || '') });
+    if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
 
-    const userInfoRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${FIREBASE_WEB_API_KEY}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken: loginData.idToken })
-    });
-    const userInfoData = await userInfoRes.json();
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(401).json({ error: 'Hatalı şifre.' });
 
-    if (!userInfoData.users[0].emailVerified) return res.status(403).json({ error: 'Hesabınız onaylanmamış. Lütfen linke tıklayın.', needsVerification: true, email: email });
+    user.lastActive = new Date();
+    await user.save();
 
-    await userRef.update({ lastActive: FieldValue.serverTimestamp() });
-    res.json({ success: true, username: username });
-  } catch (err) { res.status(500).json({ error: translateFirebaseError(err.message) }); }
-});
-
-app.post('/api/resend-code', async (req, res) => {
-  const { email, password } = req.body;
-  try {
-    const loginRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, returnSecureToken: true }),
-    });
-    const loginData = await loginRes.json();
-    if (!loginRes.ok) return res.status(401).json({ error: translateFirebaseError(loginData.error?.message || '') });
-
-    await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestType: "VERIFY_EMAIL", idToken: loginData.idToken }),
-    });
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/reset-password', async (req, res) => {
-  const { email } = req.body;
-  try {
-    await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_WEB_API_KEY}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestType: "PASSWORD_RESET", email }),
-    });
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.delete('/api/delete-account', async (req, res) => {
-  const { username } = req.body;
-  try {
-    const userSnap = await db.collection('users').where('username', '==', username).limit(1).get();
-    if (userSnap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
-    const userData = userSnap.docs[0].data();
-
-    if (userData.uid) { try { await auth.deleteUser(userData.uid); } catch (e) {} }
-    await userSnap.docs[0].ref.delete();
-    res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    const token = jwt.sign({ username: user.username }, JWT_SECRET, { expiresIn: '30d' });
+    res.json({ success: true, token, username: user.username });
+  } catch (err) {
+    res.status(500).json({ error: 'Giriş hatası: ' + err.message });
+  }
 });
 
 // ==========================================
-// SOSYAL AĞ & PROFİL ROUTE'LARI
+// SOSYAL & PROFİL ROUTE'LARI
 // ==========================================
+app.post('/api/users/:username/heartbeat', async (req, res) => {
+  try {
+    await User.updateOne({ username: req.params.username }, { $set: { lastActive: new Date() } });
+    res.json({ success: true });
+  } catch (e) {
+    res.json({ success: false });
+  }
+});
 
 app.post('/api/users/:username/status', async (req, res) => {
   const { currentRoom } = req.body;
   try {
-    const snap = await db.collection('users').where('username', '==', req.params.username).limit(1).get();
-    if (!snap.empty) {
-      await snap.docs[0].ref.update({ 
-        currentRoom: currentRoom || null,
-        lastActive: FieldValue.serverTimestamp()
-      });
-    }
+    await User.updateOne({ username: req.params.username }, { $set: { currentRoom: currentRoom || null } });
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// 🔴 KRİTİK: Null Guard ve Koruma Eklenmiş Profil API
 app.get('/api/users/:username/profile', async (req, res) => {
   try {
-    const snap = await db.collection('users').where('username', '==', req.params.username).limit(1).get();
-    if (snap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
-    
-    const userRef = snap.docs[0].ref;
-    const data = snap.docs[0].data();
+    const user = await User.findOne({ username: req.params.username });
+    if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
 
-    await userRef.update({ lastActive: FieldValue.serverTimestamp() });
+    user.lastActive = new Date();
+    await user.save();
 
     let friendsDetail = [];
-    const friendUsernames = Array.isArray(data.friends) ? data.friends : [];
-
-    if (friendUsernames.length > 0) {
-       // Tek tek sorgu atmak yerine 'in' operatörü ile veritabanı yükünü 10 kat hafiflettik
-       // Firestore 'in' sorgusu max 10 eleman alır, bunu yığınlara bölebiliriz:
-       const chunkedFriends = [];
-       for (let i = 0; i < friendUsernames.length; i += 10) {
-           chunkedFriends.push(friendUsernames.slice(i, i + 10));
-       }
-
-       for (const chunk of chunkedFriends) {
-           const friendSnaps = await db.collection('users').where('username', 'in', chunk).get();
-           friendSnaps.docs.forEach(fSnap => {
-              const fd = fSnap.data();
-              let isOnline = false;
-              if (fd.lastActive && typeof fd.lastActive.toDate === 'function') {
-                 isOnline = (Date.now() - fd.lastActive.toDate().getTime()) < 120000;
-              }
-              friendsDetail.push({ 
-                username: fd.username, 
-                bio: fd.bio || '', 
-                color: fd.color || '#5865F2', 
-                isOnline,
-                customStatus: fd.customStatus || '',
-                currentRoom: fd.currentRoom || null
-              });
-           });
-       }
+    if (user.friends && user.friends.length > 0) {
+      const friendsDocs = await User.find({ username: { $in: user.friends } });
+      const now = Date.now();
+      friendsDetail = friendsDocs.map(fd => ({
+        username: fd.username,
+        bio: fd.bio || '',
+        color: fd.color || '#5865F2',
+        isOnline: fd.lastActive ? (now - new Date(fd.lastActive).getTime() < 120000) : false,
+        customStatus: fd.customStatus || '',
+        currentRoom: fd.currentRoom || null
+      }));
     }
 
     res.json({
-      rooms: Array.isArray(data.rooms) ? data.rooms : [],
-      friendsList: friendUsernames,
-      friendsDetail: friendsDetail,
-      friendRequests: Array.isArray(data.friendRequests) ? data.friendRequests : [],
-      sentRequests: Array.isArray(data.sentRequests) ? data.sentRequests : [],
-      unreadDMs: typeof data.unreadDMs === 'object' && data.unreadDMs !== null ? data.unreadDMs : {}, 
-      bio: data.bio || '',
-      color: data.color || '#5865F2',
-      customStatus: data.customStatus || ''
+      rooms: user.rooms || [],
+      friendsList: user.friends || [],
+      friendsDetail,
+      friendRequests: user.friendRequests || [],
+      sentRequests: user.sentRequests || [],
+      unreadDMs: Object.fromEntries(user.unreadDMs || new Map()),
+      bio: user.bio || '',
+      color: user.color || '#5865F2',
+      customStatus: user.customStatus || ''
     });
-  } catch (err) { 
-      console.error("Profil Çekme Hatası:", err);
-      res.status(500).json({ error: 'Profil verisi çekilemedi.' }); 
+  } catch (err) {
+    res.status(500).json({ error: 'Profil verisi çekilemedi: ' + err.message });
   }
 });
 
 app.put('/api/users/:username/profile', async (req, res) => {
   const { bio, color, customStatus } = req.body;
   try {
-    const snap = await db.collection('users').where('username', '==', req.params.username).limit(1).get();
-    if (snap.empty) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
-    
-    const updateData = { 
-      bio: bio ? String(bio).substring(0, 100) : '', 
-      color: color || '#5865F2' 
-    };
+    const updateData = {};
+    if (bio !== undefined) updateData.bio = String(bio).substring(0, 100);
+    if (color !== undefined) updateData.color = color;
     if (customStatus !== undefined) updateData.customStatus = customStatus;
 
-    await snap.docs[0].ref.update(updateData);
+    await User.updateOne({ username: req.params.username }, { $set: updateData });
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/users/search', async (req, res) => {
   const { q, currentUsername } = req.query;
   if (!q) return res.json({ users: [] });
+
   try {
-    // Arama rotasını güvenli hale getirdik
-    const snapshot = await db.collection('users')
-      .where('username', '>=', q)
-      .where('username', '<=', q + '\uf8ff')
-      .limit(15).get();
-      
-    res.json({ users: snapshot.docs.map(d => d.data().username).filter(n => n !== currentUsername) });
-  } catch (err) { 
-      console.error("Arama Hatası:", err);
-      res.status(500).json({ error: 'Arama yapılırken sunucuda hata oluştu.' }); 
+    const users = await User.find({
+      username: { $regex: `^${q}`, $options: 'i',$ne: currentUsername }
+    }).limit(15).select('username');
+
+    res.json({ users: users.map(u => u.username) });
+  } catch (err) {
+    res.status(500).json({ error: 'Arama sırasında hata oluştu.' });
   }
 });
 
 app.post('/api/friends/add', async (req, res) => {
   const { sender, target } = req.body;
   try {
-    const sSnap = await db.collection('users').where('username', '==', sender).limit(1).get();
-    const tSnap = await db.collection('users').where('username', '==', target).limit(1).get();
-    if (sSnap.empty || tSnap.empty) return res.status(404).json({ error: 'Kullanıcı Bulunamadı.' });
-    
-    await db.runTransaction(async (t) => {
-      const sDoc = await t.get(sSnap.docs[0].ref);
-      const friendsList = sDoc.data().friends || [];
-      if (friendsList.includes(target)) throw new Error('Zaten arkadaşsınız.');
-      
-      t.update(sSnap.docs[0].ref, { sentRequests: FieldValue.arrayUnion(target) });
-      t.update(tSnap.docs[0].ref, { friendRequests: FieldValue.arrayUnion(sender) });
-    });
+    const senderUser = await User.findOne({ username: sender });
+    const targetUser = await User.findOne({ username: target });
+    if (!senderUser || !targetUser) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+
+    if (senderUser.friends.includes(target)) {
+      return res.status(400).json({ error: 'Zaten arkadaşsınız.' });
+    }
+
+    await User.updateOne({ username: sender }, { $addToSet: { sentRequests: target } });
+    await User.updateOne({ username: target }, { $addToSet: { friendRequests: sender } });
+
     res.json({ success: true });
-  } catch (err) { res.status(400).json({ error: err.message }); }
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 app.post('/api/friends/respond', async (req, res) => {
   const { user, target, action } = req.body;
   try {
-    const uSnap = await db.collection('users').where('username', '==', user).limit(1).get();
-    const tSnap = await db.collection('users').where('username', '==', target).limit(1).get();
-    
-    await db.runTransaction(async (t) => {
-      if (action === 'accept') {
-        t.update(uSnap.docs[0].ref, { friends: FieldValue.arrayUnion(target), friendRequests: FieldValue.arrayRemove(target) });
-        t.update(tSnap.docs[0].ref, { friends: FieldValue.arrayUnion(user), sentRequests: FieldValue.arrayRemove(user) });
-      } else {
-        t.update(uSnap.docs[0].ref, { friendRequests: FieldValue.arrayRemove(target) });
-        t.update(tSnap.docs[0].ref, { sentRequests: FieldValue.arrayRemove(user) });
-      }
-    });
+    if (action === 'accept') {
+      await User.updateOne({ username: user }, {
+        $addToSet: { friends: target },$pull: { friendRequests: target }
+      });
+      await User.updateOne({ username: target }, {
+        $addToSet: { friends: user },$pull: { sentRequests: user }
+      });
+    } else {
+      await User.updateOne({ username: user }, { $pull: { friendRequests: target } });
+      await User.updateOne({ username: target }, { $pull: { sentRequests: user } });
+    }
     res.json({ success: true });
-  } catch (err) { res.status(400).json({ error: err.message }); }
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/delete-account', async (req, res) => {
+  const { username } = req.body;
+  try {
+    await User.deleteOne({ username });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Hesap silinemedi.' });
+  }
 });
 
 // ==========================================
-// LIVEKIT VE ODA ROUTE'LARI
+// ODALAR & LIVEKIT ROUTE'LARI
 // ==========================================
-
 app.get('/api/rooms/:username', async (req, res) => {
   try {
-    const snap = await db.collection('users').where('username', '==', req.params.username).limit(1).get();
-    if (snap.empty) return res.json({ rooms: [] });
-    res.json({ rooms: snap.docs[0].data().rooms || [] });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    const user = await User.findOne({ username: req.params.username }).select('rooms');
+    res.json({ rooms: user ? user.rooms : [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/token', async (req, res) => {
@@ -332,68 +281,86 @@ app.post('/api/token', async (req, res) => {
   if (!roomName || !participantName) return res.status(400).json({ error: 'Oda ve kullanıcı adı zorunlu.' });
 
   try {
-    const roomRef = db.collection('rooms').doc(roomName); const roomSnap = await roomRef.get(); let isAdmin = false;
+    let room = await Room.findOne({ name: roomName });
+    let isAdmin = false;
 
-    if (!roomSnap.exists) {
-      await roomRef.set({ name: roomName, creator: participantName, password: password || '', createdAt: FieldValue.serverTimestamp() });
+    if (!room) {
+      room = new Room({ name: roomName, creator: participantName, password: password || '' });
+      await room.save();
       isAdmin = true;
     } else {
-      const roomData = roomSnap.data();
-      if (roomData.password && roomData.password !== password) return res.status(403).json({ error: 'Yanlış oda şifresi!' });
-      if (roomData.creator === participantName) isAdmin = true;
+      if (room.password && room.password !== password) {
+        return res.status(403).json({ error: 'Yanlış oda şifresi!' });
+      }
+      if (room.creator === participantName) isAdmin = true;
     }
 
     if (!isGuest && !roomName.startsWith('DM_')) {
-      const userSnap = await db.collection('users').where('username', '==', participantName).limit(1).get();
-      if (!userSnap.empty) {
-        let rooms = userSnap.docs[0].data().rooms || [];
-        if (!rooms.includes(roomName)) { rooms.push(roomName); if (rooms.length > 10) rooms.shift(); await userSnap.docs[0].ref.update({ rooms }); }
-      }
+      await User.updateOne(
+        { username: participantName },
+        { $addToSet: { rooms: roomName } }
+      );
     }
 
     if (roomName.startsWith('DM_')) {
       const friendName = roomName.replace('DM_', '').split('-').find(u => u !== participantName);
-      const userSnap = await db.collection('users').where('username', '==', participantName).limit(1).get();
-      if (!userSnap.empty && friendName) {
-         await userSnap.docs[0].ref.set({ unreadDMs: { [friendName]: 0 } }, { merge: true });
+      if (friendName) {
+        await User.updateOne(
+          { username: participantName },
+          { $set: { [`unreadDMs.${friendName}`]: 0 } }
+        );
       }
     }
 
-    const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, { identity: `${participantName}_${Date.now()}`, name: participantName });
+    const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
+      identity: `${participantName}_${Date.now()}`,
+      name: participantName
+    });
     at.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
+
     res.json({ token: await at.toJwt(), isAdmin });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post('/api/chat', async (req, res) => {
   let { roomName, sender, message, timestamp } = req.body;
   if (!message || message.trim() === '') return res.status(400).json({ error: 'Boş mesaj gönderilemez.' });
   if (message.length > 500) message = message.substring(0, 500) + '...';
+
   try {
-    await db.collection('rooms').doc(roomName).collection('messages').add({ sender, message, timestamp });
+    const newMsg = new Message({ roomName, sender, message, timestamp });
+    await newMsg.save();
 
     if (roomName.startsWith('DM_')) {
       const targetUser = roomName.replace('DM_', '').split('-').find(u => u !== sender);
       if (targetUser) {
-        const targetSnap = await db.collection('users').where('username', '==', targetUser).limit(1).get();
-        if (!targetSnap.empty) {
-           await targetSnap.docs[0].ref.set({ unreadDMs: { [sender]: FieldValue.increment(1) } }, { merge: true });
-        }
+        await User.updateOne(
+          { username: targetUser },
+          { $inc: { [`unreadDMs.${sender}`]: 1 } }
+        );
       }
     }
+
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/chat/:roomName', async (req, res) => {
   try {
-    const snapshot = await db.collection('rooms').doc(req.params.roomName).collection('messages').orderBy('timestamp', 'desc').limit(50).get();
-    res.json({ messages: snapshot.docs.map(doc => doc.data()).reverse() });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    const messages = await Message.find({ roomName }).sort({ timestamp: -1 }).limit(50);
+    res.json({ messages: messages.reverse() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.use(express.static(path.join(__dirname, 'dist')));
-app.get('*', (req, res) => { res.sendFile(path.join(__dirname, 'dist', 'index.html')); });
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
 
-const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`🚀 Sunucu ${PORT} portunda çalışıyor.`));
