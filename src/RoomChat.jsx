@@ -75,7 +75,8 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
   const [copiedId, setCopiedId] = useState(null);
   const [replyTo, setReplyTo] = useState(null); 
   const [missedCount, setMissedCount] = useState(0);
-  const [isProcessingCommand, setIsProcessingCommand] = useState(false); // Yeni yükleme durumu
+  const [isProcessingCommand, setIsProcessingCommand] = useState(false);
+  const [currentTime, setCurrentTime] = useState(Date.now()); // Akıllı saat güncellemesi için
   
   const chatEndRef = useRef(null);
   const containerRef = useRef(null);
@@ -86,6 +87,12 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
     chatEndRef.current?.scrollIntoView({ behavior }); 
     setMissedCount(0);
   };
+
+  // Zamanlayıcı: Dakikada bir ekran saatlerini günceller
+  useEffect(() => {
+    const interval = setInterval(() => setCurrentTime(Date.now()), 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current; if (!container) return;
@@ -100,17 +107,17 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
 
   const handleScroll = (e) => {
     const { scrollTop, scrollHeight, clientHeight } = e.target;
-    if (scrollHeight - scrollTop - clientHeight < 50) setMissedCount(0);
+    if (scrollHeight - scrollTop - clientHeight < 150) setMissedCount(0);
   };
 
   const handleSendMessage = async (e) => {
     if (e) e.preventDefault();
-    if (isProcessingCommand) return; // Komut işlenirken spam'i engelle
+    if (isProcessingCommand) return; 
 
     let trimmed = msg.trim(); if (!trimmed) return;
     const msgTimestamp = Date.now();
 
-    setIsProcessingCommand(true); // Yükleniyor durumunu başlat
+    setIsProcessingCommand(true);
 
     if (trimmed.startsWith('/')) {
       const command = trimmed.toLowerCase();
@@ -123,12 +130,13 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
           trimmed = `🪙 Yazı tura attı: **${flip}**!`; 
       }
       else if (command.startsWith('/shrug')) { trimmed = trimmed.replace('/shrug', '¯\\_(ツ)_/¯'); }
-      // DÜZELTME: Kedi resmi için sabit bir ID alarak URL oluşturuyoruz
+      // DÜZELTİLMİŞ /cat KOMUTU (Kesin Sabitleme)
       else if (command.startsWith('/cat')) { 
           try {
-              const catRes = await fetch('https://cataas.com/cat?json=true');
+              // cataas API'si bazen ID yerine url dönebiliyor, bu yüzden thecatapi'ye geçiş yapıldı. Çok daha stabil.
+              const catRes = await fetch('https://api.thecatapi.com/v1/images/search');
               const catData = await catRes.json();
-              trimmed = `🐈 Eğlence Saati!\nhttps://cataas.com/cat/${catData._id}.png`; 
+              trimmed = `🐈 Eğlence Saati!\n${catData[0].url}`; 
           } catch(err) {
               trimmed = `🐈 Miyav! (Resim şu an yüklenemedi)`;
           }
@@ -157,7 +165,7 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
     }).catch(err => console.error("Mesaj kaydedilemedi:", err));
 
     setMsg(''); setReplyTo(null);
-    setIsProcessingCommand(false); // Yükleniyor durumunu bitir
+    setIsProcessingCommand(false); 
     if (textareaRef.current) textareaRef.current.style.height = '44px';
     setTimeout(() => scrollToBottom('smooth'), 50);
   };
@@ -199,6 +207,7 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
               </div>
               <div className="chat-msg-header">
                 <span className="chat-sender">{m.sender || 'Anonim'}</span>
+                {/* Güncellenen saat formatı */}
                 <span className="chat-time">{formatSmartTime(m.timestamp)}</span>
               </div>
               <div className="chat-text">{renderMessageText(m.message, myDisplayName)}</div>
@@ -221,6 +230,7 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
               </div>
               <div className="chat-msg-header">
                 <span className="chat-sender">{senderName}</span>
+                {/* Güncellenen saat formatı */}
                 <span className="chat-time">{formatSmartTime(m.timestamp)}</span>
               </div>
               <div className="chat-text">{renderMessageText(m.message, myDisplayName)}</div>
