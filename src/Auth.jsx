@@ -77,7 +77,6 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
       });
       const data = await res.json();
       if (!res.ok) {
-        // Eğer kullanıcı adı/şifre doğru ama hesap onaysızsa doğrulama ekranına at
         if (data.needsVerification) {
           setEmail(data.email); 
           setAuthMode('verify');
@@ -121,8 +120,9 @@ export default function Auth({ initialMode = 'login', onAuthSuccess, onGuestSucc
               <input 
                 type="text" 
                 maxLength={6} 
+                autoFocus
                 value={verificationCode} 
-                onChange={(e) => setVerificationCode(e.target.value.replace(/[^0-9]/g, ''))} // Sadece sayı girmesine izin ver
+                onChange={(e) => setVerificationCode(e.target.value.replace(/[^0-9]/g, ''))} 
                 required 
                 placeholder="123456" 
                 style={{textAlign: 'center', letterSpacing: '12px', fontSize: '28px', fontWeight: 'bold'}} 

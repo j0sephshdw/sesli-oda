@@ -5,7 +5,6 @@ import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { AccessToken } from 'livekit-server-sdk';
-import { Resend } from 'resend';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -24,8 +23,56 @@ const JWT_SECRET = process.env.JWT_SECRET || 'cok_gizli_anahtar_degistirin';
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY;
 const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET;
 
-// Resend Servisini Başlat (API Key yoksa bile çökmesini engeller)
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const BREVO_API_KEY = process.env.BREVO_API_KEY;
+const BREVO_SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL;
+
+// ==========================================
+// BREVO E-POSTA GÖNDERME MOTORU (Fetch API)
+// ==========================================
+const sendVerificationEmail = async (toEmail, username, code) => {
+  if (!BREVO_API_KEY || !BREVO_SENDER_EMAIL) {
+    console.warn("⚠️ Brevo ayarları eksik, doğrulama e-postası gönderilmedi.");
+    return false;
+  }
+
+  const payload = {
+    sender: { name: "Sesli Oda", email: BREVO_SENDER_EMAIL },
+    to: [{ email: toEmail, name: username }],
+    subject: "Sesli Oda - Doğrulama Kodunuz",
+    htmlContent: `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; padding: 40px 20px; background-color: #1e1f22; color: #f2f3f5; border-radius: 12px; max-width: 500px; margin: 0 auto; border: 1px solid #313338;">
+        <h2 style="color: #ffffff; margin-bottom: 15px; font-size: 24px;">Hoş Geldin, ${username}!</h2>
+        <p style="color: #b5bac1; font-size: 16px; line-height: 1.5;">Hesabını doğrulamak ve odalara katılmak için aşağıdaki 6 haneli kodu kullanabilirsin:</p>
+        <div style="background: #2b2d31; padding: 20px; margin: 30px auto; width: max-content; border-radius: 10px; letter-spacing: 10px; font-size: 32px; font-weight: 900; color: #5865f2; border: 2px dashed #3f4147; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+          ${code}
+        </div>
+        <p style="color: #949ba4; font-size: 13px; margin-top: 30px;">Bu işlemi sen talep etmediysen, bu e-postayı güvenle silebilirsin.</p>
+      </div>
+    `
+  };
+
+  try {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': BREVO_API_KEY,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("Brevo Teslimat Hatası:", errorData);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("Brevo Bağlantı Hatası:", err);
+    return false;
+  }
+};
 
 // ==========================================
 // MONGODB VERİ MODELLERİ (SCHEMAS)
@@ -69,7 +116,7 @@ const Room = mongoose.model('Room', roomSchema);
 // VERİTABANI BAĞLANTISI
 // ==========================================
 if (!MONGO_URI) {
-  console.error("KRİTİK HATA: MONGO_URI çevre değişkeni eksik!");
+  console.error("KRİTİK HATA: MONGO_URI eksik!");
   process.exit(1);
 }
 
@@ -95,30 +142,14 @@ app.post('/api/register', async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const code = Math.floor(100000 + Math.random() * 900000).toString(); // 6 Haneli Kod Üret
+    const code = Math.floor(100000 + Math.random() * 900000).toString(); 
 
     const newUser = new User({ email, username, password: hashedPassword, verificationCode: code });
     await newUser.save();
 
-    if (resend) {
-      await resend.emails.send({
-        from: 'Sesli Oda <onboarding@resend.dev>',
-        to: email,
-        subject: 'Sesli Oda - Doğrulama Kodunuz',
-        html: `
-          <div style="font-family: sans-serif; text-align: center; padding: 20px; background-color: #1e1f22; color: #f2f3f5;">
-            <h2 style="color: #fff;">Hoş Geldin, ${username}!</h2>
-            <p style="color: #b5bac1;">Hesabınızı aktifleştirmek için aşağıdaki doğrulama kodunu kullanın:</p>
-            <div style="background: #2b2d31; padding: 15px; margin: 20px auto; width: max-content; border-radius: 8px; letter-spacing: 5px; font-size: 28px; font-weight: bold; color: #5865f2; border: 1px solid #3f4147;">
-              ${code}
-            </div>
-            <p style="color: #949ba4; font-size: 12px;">Eğer bu işlemi siz yapmadıysanız, bu e-postayı yok sayabilirsiniz.</p>
-          </div>
-        `
-      });
-    }
+    await sendVerificationEmail(email, username, code);
 
-    res.json({ success: true, message: 'Kayıt başarılı! Lütfen e-postanıza gelen kodu girin.' });
+    res.json({ success: true, message: 'Kayıt başarılı! Lütfen e-postanıza gelen 6 haneli kodu girin.' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -131,7 +162,7 @@ app.post('/api/verify', async (req, res) => {
     if (user.verificationCode !== code) return res.status(400).json({ error: 'Hatalı doğrulama kodu!' });
 
     user.isVerified = true;
-    user.verificationCode = ''; // Onaylandıktan sonra kodu sıfırla
+    user.verificationCode = ''; 
     await user.save();
 
     const token = jwt.sign({ username: user.username }, JWT_SECRET, { expiresIn: '30d' });
@@ -148,7 +179,6 @@ app.post('/api/login', async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ error: 'Hatalı şifre.' });
 
-    // Onay kontrolü
     if (!user.isVerified) {
       return res.status(403).json({ error: 'Hesabınız onaylanmamış. Lütfen kodunuzu girin.', needsVerification: true, email: user.email });
     }
@@ -172,21 +202,7 @@ app.post('/api/resend-code', async (req, res) => {
     user.verificationCode = code;
     await user.save();
 
-    if (resend) {
-      await resend.emails.send({
-        from: 'Sesli Oda <onboarding@resend.dev>',
-        to: email,
-        subject: 'Sesli Oda - Yeni Doğrulama Kodunuz',
-        html: `
-          <div style="font-family: sans-serif; text-align: center; padding: 20px; background-color: #1e1f22; color: #f2f3f5;">
-            <h2 style="color: #fff;">Yeni Doğrulama Kodunuz</h2>
-            <div style="background: #2b2d31; padding: 15px; margin: 20px auto; width: max-content; border-radius: 8px; letter-spacing: 5px; font-size: 28px; font-weight: bold; color: #5865f2; border: 1px solid #3f4147;">
-              ${code}
-            </div>
-          </div>
-        `
-      });
-    }
+    await sendVerificationEmail(email, user.username, code);
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -227,7 +243,7 @@ app.get('/api/users/:username/profile', async (req, res) => {
       unreadDMs: Object.fromEntries(user.unreadDMs || new Map()), bio: user.bio || '',
       color: user.color || '#5865F2', customStatus: user.customStatus || ''
     });
-  } catch (err) { res.status(500).json({ error: 'Profil verisi çekilemedi: ' + err.message }); }
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.put('/api/users/:username/profile', async (req, res) => {
