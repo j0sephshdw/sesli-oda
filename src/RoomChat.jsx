@@ -102,10 +102,10 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
     if (scrollHeight - scrollTop - clientHeight < 50) setMissedCount(0);
   };
 
-  // YENİ: Dog API asenkron çalıştığı için async eklendi
   const handleSendMessage = async (e) => {
     if (e) e.preventDefault();
     let trimmed = msg.trim(); if (!trimmed) return;
+    const msgTimestamp = Date.now(); // Mesajın atıldığı anki sabit zaman (Resimlerin değişmemesi için)
 
     if (trimmed.startsWith('/')) {
       const command = trimmed.toLowerCase();
@@ -118,10 +118,10 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
           trimmed = `🪙 Yazı tura attı: **${flip}**!`; 
       }
       else if (command.startsWith('/shrug')) { trimmed = trimmed.replace('/shrug', '¯\\_(ツ)_/¯'); }
-      else if (command.startsWith('/cat')) { trimmed = `🐈 Eğlence Saati!\nhttps://cataas.com/cat?t=${Date.now()}.png`; }
+      // Kedi ve köpek resimleri atıldığı andaki sabit timestamp ile sabitlendi
+      else if (command.startsWith('/cat')) { trimmed = `🐈 Eğlence Saati!\nhttps://cataas.com/cat?t=${msgTimestamp}.png`; }
       else if (command.startsWith('/dog')) { 
           try {
-              // JSON verisinden gerçek JPG linkini ayıklıyoruz
               const dogRes = await fetch('https://dog.ceo/api/breeds/image/random');
               const dogData = await dogRes.json();
               trimmed = `🐕 Hav!\n${dogData.message}`; 
@@ -140,7 +140,7 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
     send(finalMessage);
     fetch('/api/chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roomName, sender: myDisplayName, message: finalMessage, timestamp: Date.now() })
+      body: JSON.stringify({ roomName, sender: myDisplayName, message: finalMessage, timestamp: msgTimestamp })
     }).catch(err => console.error("Mesaj kaydedilemedi:", err));
 
     setMsg(''); setReplyTo(null);
@@ -170,7 +170,7 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
       <div className="chat-header">💬 Oda Sohbeti</div>
       
       <div className="chat-messages" ref={containerRef} onScroll={handleScroll}>
-        <div className="chat-sys-msg" style={{marginBottom: '15px'}}>Mesaj geçmişi yüklendi. Sürprizler için /roll, /dog veya /cat yazın!</div>
+        <div className="chat-sys-msg" style={{marginBottom: '15px'}}>Mesaj geçmişi yüklendi. Komutlar: /roll, /cat, /dog</div>
 
         {dbMessages.map((m, idx) => {
           const safeName = (myDisplayName || '').toLowerCase();
