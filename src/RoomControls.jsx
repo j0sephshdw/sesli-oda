@@ -22,16 +22,18 @@ export default function RoomControls({
   return (
     <footer className={`room-controls-wrapper ${isIdle ? 'idle' : ''}`} role="toolbar" aria-label="Oda Kontrolleri">
       <div className="interactive-actions">
-        <button onClick={() => onSendEmojiReaction?.('🔥')} className="action-btn" title="Alev" aria-label="Alev reaksiyonu gönder">🔥</button>
-        <button onClick={() => onSendEmojiReaction?.('👍')} className="action-btn" title="Beğen" aria-label="Beğeni reaksiyonu gönder">👍</button>
-        <button onClick={() => onSendEmojiReaction?.('😂')} className="action-btn" title="Gülme" aria-label="Gülme reaksiyonu gönder">😂</button>
+        {/* YENİ ZENGİN EMOJİ REAKSİYONLARI */}
+        <button onClick={() => onSendEmojiReaction?.('🔥')} className="action-btn" title="Alev">🔥</button>
+        <button onClick={() => onSendEmojiReaction?.('❤️')} className="action-btn" title="Kalp">❤️</button>
+        <button onClick={() => onSendEmojiReaction?.('🎉')} className="action-btn" title="Parti">🎉</button>
+        <button onClick={() => onSendEmojiReaction?.('❓')} className="action-btn" title="Kafam Karıştı">❓</button>
         
         <div className="soundboard-separator" role="separator" />
 
         <button 
           onClick={onToggleHandRaise} 
           className={`action-btn ${isHandRaised ? 'active-hand' : ''}`} 
-          title="El Kaldır"
+          title="El Kaldır / Söz İste"
           aria-pressed={isHandRaised}
         >
           ✋

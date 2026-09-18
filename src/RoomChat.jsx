@@ -36,18 +36,19 @@ const renderMessageText = (text = '', myDisplayName = '') => {
       
       const renderedLine = parts.map((part, i) => {
         if (!part) return null;
-        const spotifyMatch = part.match(/(?:https?:\/\/)?(?:open\.spotify\.com)\/(track|album|playlist|episode)\/([a-zA-Z0-9]+)/);
-        if (spotifyMatch) return (<div key={i} style={{marginTop: '8px', marginBottom: '8px'}}><iframe style={{borderRadius: '12px'}} src={`https://open.spotify.com/embed/${spotifyMatch[1]}/${spotifyMatch[2]}?utm_source=generator&theme=0`} width="100%" height="152" frameBorder="0" allowFullScreen loading="lazy"></iframe></div>);
-
-        const ytMatch = part.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-        if (ytMatch) return (<div key={i} style={{marginTop: '8px', marginBottom: '8px'}}><a href={part} target="_blank" rel="noopener noreferrer" className="chat-link">{part}</a><iframe width="100%" height="200" src={`https://www.youtube.com/embed/${ytMatch[1]}`} frameBorder="0" allowFullScreen style={{borderRadius: '8px', marginTop: '8px', border: '1px solid #3f4147'}}></iframe></div>);
-
+        
+        // Zengin Medya ve Resimler
         if (part.match(/^https?:\/\/[^\s]+(\.(jpg|jpeg|png|gif|webp))(\?.*)?$/i)) return <img key={i} src={part} alt="görsel" className="chat-image-preview" onClick={() => window.open(part, '_blank')} title="Tam boyutta aç"/>;
         if (part.match(/^https?:\/\/[^\s]+$/)) return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">{part}</a>;
+        
+        // Zengin Metin Formatları
         if (part.startsWith('**') && part.endsWith('**')) return <strong key={i}>{part.slice(2, -2)}</strong>;
         if (part.startsWith('__') && part.endsWith('__')) return <u key={i}>{part.slice(2, -2)}</u>;
         if (part.startsWith('~~') && part.endsWith('~~')) return <del key={i}>{part.slice(2, -2)}</del>;
+        
+        // YENİ: Spoiler Sistemi
         if (part.startsWith('||') && part.endsWith('||')) return <span key={i} className="spoiler-text" onClick={(e) => e.target.classList.add('revealed')} title="Görmek için tıkla">{part.slice(2, -2)}</span>;
+        
         if (safeName && part.toLowerCase() === `@${safeName}`) return <span key={i} className="mention-badge">{part}</span>;
         if (part.startsWith('@')) return <span key={i} className="mention-other">{part}</span>;
         return part;
@@ -75,7 +76,6 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
   const { send, chatMessages } = useChat();
   const [msg, setMsg] = useState('');
   const [copiedId, setCopiedId] = useState(null);
-  const [showScrollBtn, setShowScrollBtn] = useState(false); 
   const [replyTo, setReplyTo] = useState(null); 
   const [missedCount, setMissedCount] = useState(0);
   
@@ -109,14 +109,20 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
     if (e) e.preventDefault();
     let trimmed = msg.trim(); if (!trimmed) return;
 
+    // EĞLENCELİ KOMUTLAR (CHAT OYUNLARI)
     if (trimmed.startsWith('/')) {
       const command = trimmed.toLowerCase();
-      if (command.startsWith('/roll')) { const roll = Math.floor(Math.random() * 100) + 1; trimmed = `🎲 Zarları yuvarladı ve **${roll}** attı!`; }
-      else if (command.startsWith('/flip')) { const flip = Math.random() > 0.5 ? 'Yazı' : 'Tura'; trimmed = `🪙 Yazı tura attı: **${flip}**!`; }
+      if (command.startsWith('/roll')) { 
+          const roll = Math.floor(Math.random() * 100) + 1; 
+          trimmed = `🎲 Zarları yuvarladı ve **${roll}** attı!`; 
+      }
+      else if (command.startsWith('/flip')) { 
+          const flip = Math.random() > 0.5 ? 'Yazı' : 'Tura'; 
+          trimmed = `🪙 Yazı tura attı: **${flip}**!`; 
+      }
       else if (command.startsWith('/shrug')) { trimmed = trimmed.replace('/shrug', '¯\\_(ツ)_/¯'); }
-      // 🟡 YENİ: Kedi Köpek Komutları
-      else if (command.startsWith('/cat')) { trimmed = `🐈 Süpriz!\nhttps://cataas.com/cat?t=${Date.now()}.png`; }
-      else if (command.startsWith('/dog')) { trimmed = `🐕 Hav!\nhttps://dog.ceo/api/breeds/image/random`; }
+      else if (command.startsWith('/cat')) { trimmed = `🐈 Eğlence Saati!\n[https://cataas.com/cat?t=$](https://cataas.com/cat?t=$){Date.now()}.png`; }
+      else if (command.startsWith('/dog')) { trimmed = `🐕 Hav!\n[https://dog.ceo/api/breeds/image/random](https://dog.ceo/api/breeds/image/random)`; }
     }
 
     let finalMessage = trimmed;
@@ -155,10 +161,10 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
 
   return (
     <div className="custom-chat-panel" style={{ position: 'relative' }}>
-      <div className="chat-header">💬 Sohbet</div>
+      <div className="chat-header">💬 Oda Sohbeti</div>
       
       <div className="chat-messages" ref={containerRef} onScroll={handleScroll}>
-        <div className="chat-sys-msg" style={{marginBottom: '15px'}}>Oda geçmişi ve canlı mesajlar.</div>
+        <div className="chat-sys-msg" style={{marginBottom: '15px'}}>Mesaj geçmişi yüklendi. Sürprizler için /roll veya /cat yazın!</div>
 
         {dbMessages.map((m, idx) => {
           const safeName = (myDisplayName || '').toLowerCase();
@@ -231,7 +237,7 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
         )}
         
         <form className="chat-input-area" onSubmit={handleSendMessage} style={{ alignItems: 'flex-end', borderTop: replyTo ? 'none' : '1px solid #1e1f22' }}>
-          <textarea ref={textareaRef} value={msg} onChange={handleInputChange} onKeyDown={handleKeyDown} placeholder="Mesaj... (```kod```, /cat, ||gizli||)" rows={1}
+          <textarea ref={textareaRef} value={msg} onChange={handleInputChange} onKeyDown={handleKeyDown} placeholder="Mesaj... ( ||gizli|| veya /roll )" rows={1}
             style={{ flex: 1, padding: '12px', borderRadius: '6px', border: 'none', backgroundColor: '#1e1f22', color: 'white', outline: 'none', resize: 'none', overflowY: 'auto', fontFamily: 'inherit', fontSize: '14px', lineHeight: '1.4', minHeight: '44px', maxHeight: '120px', transition: 'border 0.2s' }}
           />
           <button type="submit" disabled={!msg.trim()} style={{ height: '44px' }}>Gönder</button>
