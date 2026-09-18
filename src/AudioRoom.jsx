@@ -58,7 +58,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
 
   useEffect(() => {
     if (!myDisplayName) return;
-    
     const setPresence = (currentRoomName) => {
       fetch(`/api/users/${myDisplayName}/status`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -67,7 +66,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
     };
 
     setPresence(roomName);
-
     const handleUnload = () => setPresence(null);
     window.addEventListener('beforeunload', handleUnload);
 

@@ -50,8 +50,8 @@ export default function App() {
       <LiveKitRoom
         serverUrl={LIVEKIT_URL}
         token={token}
-        audio={true}
-        video={false}
+        audio={false} // OTOMATİK MİKROFONU DEVRE DIŞI BIRAKTIK
+        video={false} // OTOMATİK KAMERAYI DA DEVRE DIŞI BIRAKTIK
         onDisconnected={handleRoomLeave}
         data-lk-theme="default"
       >

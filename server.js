@@ -131,8 +131,10 @@ mongoose.connect(MONGO_URI)
 // KİMLİK DOĞRULAMA (AUTH) ROUTE'LARI
 // ==========================================
 app.post('/api/register', async (req, res) => {
-  const { email, username, password } = req.body;
+  let { email, username, password } = req.body;
   if (!email || !username || !password) return res.status(400).json({ error: 'Bilgiler eksik.' });
+  
+  email = email.toLowerCase(); // BÜYÜK HARF AÇIĞI KAPATILDI
 
   try {
     const existingUser = await User.findOne({ $or: [{ email }, { username }] });
@@ -154,7 +156,9 @@ app.post('/api/register', async (req, res) => {
 });
 
 app.post('/api/verify', async (req, res) => {
-  const { email, code } = req.body;
+  let { email, code } = req.body;
+  email = email.toLowerCase(); // BÜYÜK HARF AÇIĞI KAPATILDI
+  
   try {
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
@@ -173,7 +177,12 @@ app.post('/api/verify', async (req, res) => {
 app.post('/api/login', async (req, res) => {
   const { username: identifier, password } = req.body;
   try {
-    const user = await User.findOne({ $or: [{ email: identifier }, { username: identifier }] });
+    const user = await User.findOne({ 
+      $or: [
+        { email: identifier.toLowerCase() }, // BÜYÜK HARF AÇIĞI KAPATILDI
+        { username: identifier } 
+      ] 
+    });
     if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
 
     const isMatch = await bcrypt.compare(password, user.password);
@@ -192,7 +201,9 @@ app.post('/api/login', async (req, res) => {
 });
 
 app.post('/api/resend-code', async (req, res) => {
-  const { email } = req.body;
+  let { email } = req.body;
+  email = email.toLowerCase(); // BÜYÜK HARF AÇIĞI KAPATILDI
+  
   try {
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
@@ -260,7 +271,6 @@ app.put('/api/users/:username/profile', async (req, res) => {
 app.get('/api/users/search', async (req, res) => {
   const { q, currentUsername } = req.query; if (!q) return res.json({ users: [] });
   try { 
-    // GÜVENLİK DÜZELTMESİ: Regex karakterleri temizlendi
     const safeQuery = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const users = await User.find({ username: { $regex: `^${safeQuery}`, $options: 'i',$ne: currentUsername } }).limit(15).select('username'); 
     res.json({ users: users.map(u => u.username) }); 
@@ -352,7 +362,6 @@ app.post('/api/chat', async (req, res) => {
 
 app.get('/api/chat/:roomName', async (req, res) => {
   try { 
-    // HATA DÜZELTİLDİ: roomName eksikliği DM ve Oda mesajlarının silinmiş gibi gözükmesine sebep oluyordu
     const roomName = req.params.roomName; 
     const messages = await Message.find({ roomName }).sort({ timestamp: -1 }).limit(50); 
     res.json({ messages: messages.reverse() }); 
