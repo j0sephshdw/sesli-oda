@@ -75,6 +75,7 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
   const [copiedId, setCopiedId] = useState(null);
   const [replyTo, setReplyTo] = useState(null); 
   const [missedCount, setMissedCount] = useState(0);
+  const [isProcessingCommand, setIsProcessingCommand] = useState(false); // Yeni yükleme durumu
   
   const chatEndRef = useRef(null);
   const containerRef = useRef(null);
@@ -104,8 +105,12 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
 
   const handleSendMessage = async (e) => {
     if (e) e.preventDefault();
+    if (isProcessingCommand) return; // Komut işlenirken spam'i engelle
+
     let trimmed = msg.trim(); if (!trimmed) return;
-    const msgTimestamp = Date.now(); // Mesajın atıldığı anki sabit zaman (Resimlerin değişmemesi için)
+    const msgTimestamp = Date.now();
+
+    setIsProcessingCommand(true); // Yükleniyor durumunu başlat
 
     if (trimmed.startsWith('/')) {
       const command = trimmed.toLowerCase();
@@ -118,8 +123,16 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
           trimmed = `🪙 Yazı tura attı: **${flip}**!`; 
       }
       else if (command.startsWith('/shrug')) { trimmed = trimmed.replace('/shrug', '¯\\_(ツ)_/¯'); }
-      // Kedi ve köpek resimleri atıldığı andaki sabit timestamp ile sabitlendi
-      else if (command.startsWith('/cat')) { trimmed = `🐈 Eğlence Saati!\nhttps://cataas.com/cat?t=${msgTimestamp}.png`; }
+      // DÜZELTME: Kedi resmi için sabit bir ID alarak URL oluşturuyoruz
+      else if (command.startsWith('/cat')) { 
+          try {
+              const catRes = await fetch('https://cataas.com/cat?json=true');
+              const catData = await catRes.json();
+              trimmed = `🐈 Eğlence Saati!\nhttps://cataas.com/cat/${catData._id}.png`; 
+          } catch(err) {
+              trimmed = `🐈 Miyav! (Resim şu an yüklenemedi)`;
+          }
+      }
       else if (command.startsWith('/dog')) { 
           try {
               const dogRes = await fetch('https://dog.ceo/api/breeds/image/random');
@@ -144,6 +157,7 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
     }).catch(err => console.error("Mesaj kaydedilemedi:", err));
 
     setMsg(''); setReplyTo(null);
+    setIsProcessingCommand(false); // Yükleniyor durumunu bitir
     if (textareaRef.current) textareaRef.current.style.height = '44px';
     setTimeout(() => scrollToBottom('smooth'), 50);
   };
@@ -245,8 +259,11 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
         <form className="chat-input-area" onSubmit={handleSendMessage} style={{ alignItems: 'flex-end', borderTop: replyTo ? 'none' : '1px solid #1e1f22' }}>
           <textarea ref={textareaRef} value={msg} onChange={handleInputChange} onKeyDown={handleKeyDown} placeholder="Mesaj... ( ||gizli|| veya /roll )" rows={1}
             style={{ flex: 1, padding: '12px', borderRadius: '6px', border: 'none', backgroundColor: '#1e1f22', color: 'white', outline: 'none', resize: 'none', overflowY: 'auto', fontFamily: 'inherit', fontSize: '14px', lineHeight: '1.4', minHeight: '44px', maxHeight: '120px', transition: 'border 0.2s' }}
+            disabled={isProcessingCommand}
           />
-          <button type="submit" disabled={!msg.trim()} style={{ height: '44px' }}>Gönder</button>
+          <button type="submit" disabled={!msg.trim() || isProcessingCommand} style={{ height: '44px', opacity: isProcessingCommand ? 0.6 : 1 }}>
+            {isProcessingCommand ? '⌛' : 'Gönder'}
+          </button>
         </form>
       </div>
     </div>
