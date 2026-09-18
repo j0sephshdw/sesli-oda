@@ -76,7 +76,7 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
   const [replyTo, setReplyTo] = useState(null); 
   const [missedCount, setMissedCount] = useState(0);
   const [isProcessingCommand, setIsProcessingCommand] = useState(false);
-  const [currentTime, setCurrentTime] = useState(Date.now()); // Akıllı saat güncellemesi için
+  const [currentTime, setCurrentTime] = useState(Date.now());
   
   const chatEndRef = useRef(null);
   const containerRef = useRef(null);
@@ -88,7 +88,6 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
     setMissedCount(0);
   };
 
-  // Zamanlayıcı: Dakikada bir ekran saatlerini günceller
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(Date.now()), 60000);
     return () => clearInterval(interval);
@@ -130,10 +129,10 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
           trimmed = `🪙 Yazı tura attı: **${flip}**!`; 
       }
       else if (command.startsWith('/shrug')) { trimmed = trimmed.replace('/shrug', '¯\\_(ツ)_/¯'); }
-      // DÜZELTİLMİŞ /cat KOMUTU (Kesin Sabitleme)
+      // DÜZELTME 2: Kedi komutu tamamen Dogs mantığıyla statik hale getirildi
       else if (command.startsWith('/cat')) { 
           try {
-              // cataas API'si bazen ID yerine url dönebiliyor, bu yüzden thecatapi'ye geçiş yapıldı. Çok daha stabil.
+              // thecatapi bazen URL bazen ID dönüyordu. Bu api ise tıpkı dog.ceo gibi tamamen rastgele, statik .jpg linkleri fırlatır.
               const catRes = await fetch('https://api.thecatapi.com/v1/images/search');
               const catData = await catRes.json();
               trimmed = `🐈 Eğlence Saati!\n${catData[0].url}`; 
@@ -207,7 +206,6 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
               </div>
               <div className="chat-msg-header">
                 <span className="chat-sender">{m.sender || 'Anonim'}</span>
-                {/* Güncellenen saat formatı */}
                 <span className="chat-time">{formatSmartTime(m.timestamp)}</span>
               </div>
               <div className="chat-text">{renderMessageText(m.message, myDisplayName)}</div>
@@ -230,7 +228,6 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
               </div>
               <div className="chat-msg-header">
                 <span className="chat-sender">{senderName}</span>
-                {/* Güncellenen saat formatı */}
                 <span className="chat-time">{formatSmartTime(m.timestamp)}</span>
               </div>
               <div className="chat-text">{renderMessageText(m.message, myDisplayName)}</div>
