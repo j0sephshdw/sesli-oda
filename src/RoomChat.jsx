@@ -37,16 +37,13 @@ const renderMessageText = (text = '', myDisplayName = '') => {
       const renderedLine = parts.map((part, i) => {
         if (!part) return null;
         
-        // Zengin Medya ve Resimler
         if (part.match(/^https?:\/\/[^\s]+(\.(jpg|jpeg|png|gif|webp))(\?.*)?$/i)) return <img key={i} src={part} alt="görsel" className="chat-image-preview" onClick={() => window.open(part, '_blank')} title="Tam boyutta aç"/>;
         if (part.match(/^https?:\/\/[^\s]+$/)) return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="chat-link">{part}</a>;
         
-        // Zengin Metin Formatları
         if (part.startsWith('**') && part.endsWith('**')) return <strong key={i}>{part.slice(2, -2)}</strong>;
         if (part.startsWith('__') && part.endsWith('__')) return <u key={i}>{part.slice(2, -2)}</u>;
         if (part.startsWith('~~') && part.endsWith('~~')) return <del key={i}>{part.slice(2, -2)}</del>;
         
-        // YENİ: Spoiler Sistemi
         if (part.startsWith('||') && part.endsWith('||')) return <span key={i} className="spoiler-text" onClick={(e) => e.target.classList.add('revealed')} title="Görmek için tıkla">{part.slice(2, -2)}</span>;
         
         if (safeName && part.toLowerCase() === `@${safeName}`) return <span key={i} className="mention-badge">{part}</span>;
@@ -105,11 +102,11 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
     if (scrollHeight - scrollTop - clientHeight < 50) setMissedCount(0);
   };
 
-  const handleSendMessage = (e) => {
+  // YENİ: Dog API asenkron çalıştığı için async eklendi
+  const handleSendMessage = async (e) => {
     if (e) e.preventDefault();
     let trimmed = msg.trim(); if (!trimmed) return;
 
-    // EĞLENCELİ KOMUTLAR (CHAT OYUNLARI)
     if (trimmed.startsWith('/')) {
       const command = trimmed.toLowerCase();
       if (command.startsWith('/roll')) { 
@@ -121,8 +118,17 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
           trimmed = `🪙 Yazı tura attı: **${flip}**!`; 
       }
       else if (command.startsWith('/shrug')) { trimmed = trimmed.replace('/shrug', '¯\\_(ツ)_/¯'); }
-      else if (command.startsWith('/cat')) { trimmed = `🐈 Eğlence Saati!\n[https://cataas.com/cat?t=$](https://cataas.com/cat?t=$){Date.now()}.png`; }
-      else if (command.startsWith('/dog')) { trimmed = `🐕 Hav!\n[https://dog.ceo/api/breeds/image/random](https://dog.ceo/api/breeds/image/random)`; }
+      else if (command.startsWith('/cat')) { trimmed = `🐈 Eğlence Saati!\nhttps://cataas.com/cat?t=${Date.now()}.png`; }
+      else if (command.startsWith('/dog')) { 
+          try {
+              // JSON verisinden gerçek JPG linkini ayıklıyoruz
+              const dogRes = await fetch('https://dog.ceo/api/breeds/image/random');
+              const dogData = await dogRes.json();
+              trimmed = `🐕 Hav!\n${dogData.message}`; 
+          } catch(err) {
+              trimmed = `🐕 Hav! (Resim şu an yüklenemedi)`;
+          }
+      }
     }
 
     let finalMessage = trimmed;
@@ -164,7 +170,7 @@ export default function RoomChat({ roomName, myDisplayName = '', dbMessages = []
       <div className="chat-header">💬 Oda Sohbeti</div>
       
       <div className="chat-messages" ref={containerRef} onScroll={handleScroll}>
-        <div className="chat-sys-msg" style={{marginBottom: '15px'}}>Mesaj geçmişi yüklendi. Sürprizler için /roll veya /cat yazın!</div>
+        <div className="chat-sys-msg" style={{marginBottom: '15px'}}>Mesaj geçmişi yüklendi. Sürprizler için /roll, /dog veya /cat yazın!</div>
 
         {dbMessages.map((m, idx) => {
           const safeName = (myDisplayName || '').toLowerCase();

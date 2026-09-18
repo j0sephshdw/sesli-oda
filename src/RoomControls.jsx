@@ -22,7 +22,7 @@ export default function RoomControls({
   return (
     <footer className={`room-controls-wrapper ${isIdle ? 'idle' : ''}`} role="toolbar" aria-label="Oda Kontrolleri">
       <div className="interactive-actions">
-        {/* YENİ ZENGİN EMOJİ REAKSİYONLARI */}
+        {/* YENİ ZENGİN EMOJİ REAKSİYONLARI BURADA */}
         <button onClick={() => onSendEmojiReaction?.('🔥')} className="action-btn" title="Alev">🔥</button>
         <button onClick={() => onSendEmojiReaction?.('❤️')} className="action-btn" title="Kalp">❤️</button>
         <button onClick={() => onSendEmojiReaction?.('🎉')} className="action-btn" title="Parti">🎉</button>
