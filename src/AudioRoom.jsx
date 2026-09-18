@@ -33,7 +33,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   
   const [isDeafened, setIsDeafened] = useState(false);
   const [isHandRaised, setIsHandRaised] = useState(false);
-  const [isAfk, setIsAfk] = useState(false);
   const [floatingEmojis, setFloatingEmojis] = useState([]);
   
   const [isChatVisible, setIsChatVisible] = useState(true);
@@ -57,7 +56,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
   const prevChatCount = useRef(0);
   const myDisplayName = (localParticipant?.name || localParticipant?.identity || '').split('_')[0];
 
-  // 🟡 YENİ: Rich Presence (Arkadaşlara Hangi Odada Olduğunu Söyle)
   useEffect(() => {
     if (!myDisplayName) return;
     
@@ -68,10 +66,8 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
       }).catch(() => {});
     };
 
-    // Odaya girince bildir
     setPresence(roomName);
 
-    // Pencere kapanırsa veya çıkarsa temizle
     const handleUnload = () => setPresence(null);
     window.addEventListener('beforeunload', handleUnload);
 
@@ -166,24 +162,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
     } catch(e) {}
   }, []);
 
-  const playSoundboardEffect = useCallback((effectType) => {
-    try {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (!AudioCtx) return;
-      const ctx = new AudioCtx(); if (ctx.state === 'suspended') ctx.resume();
-      const osc = ctx.createOscillator(); const gain = ctx.createGain();
-      osc.connect(gain); gain.connect(ctx.destination);
-
-      if (effectType === 'ding') {
-        osc.type = 'sine'; osc.frequency.setValueAtTime(800, ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(1600, ctx.currentTime + 0.1);
-        gain.gain.setValueAtTime(0.1, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5); osc.start(); osc.stop(ctx.currentTime + 0.5);
-      } else if (effectType === 'buzzer') {
-        osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.3);
-        gain.gain.setValueAtTime(0.1, ctx.currentTime); gain.gain.linearRampToValueAtTime(0.001, ctx.currentTime + 0.4); osc.start(); osc.stop(ctx.currentTime + 0.4);
-      }
-    } catch(e) {}
-  }, []);
-
   const playTone = useCallback((type) => {
     if (muteChatSounds && (type === 'message' || type === 'mention')) return; 
     try {
@@ -208,14 +186,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
     if(window.confirm(`👑 ${targetName} adlı kullanıcıyı odadan atmak istediğinize emin misiniz?`)){
       const data = JSON.stringify({ type: 'KICK', targetIdentity }); room.localParticipant.publishData(new TextEncoder().encode(data), { reliable: true });
       addToast(`👢 ${targetName} odadan atıldı!`, 'success');
-    }
-  };
-
-  const broadcastSoundboard = (effect) => {
-    playSoundboardEffect(effect); 
-    if (room?.localParticipant) {
-      const data = JSON.stringify({ type: 'SOUNDBOARD', effect });
-      room.localParticipant.publishData(new TextEncoder().encode(data), { reliable: true });
     }
   };
 
@@ -291,7 +261,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
         const str = new TextDecoder().decode(payload); const data = JSON.parse(str);
         if (data.type === 'EMOJI_REACTION') spawnFloatingEmoji(data.emoji);
         if (data.type === 'TYPING') setTyping(prev => ({ ...prev, [data.name]: Date.now() }));
-        if (data.type === 'SOUNDBOARD') playSoundboardEffect(data.effect); 
         if (data.type === 'KICK' && data.targetIdentity === localParticipant?.identity) { alert("Oda kurucusu (Admin) tarafından odadan atıldınız."); handleLeaveRoom(); }
       } catch(e) {}
     };
@@ -301,7 +270,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
 
     room.on(RoomEvent.ParticipantConnected, handleConnected); room.on(RoomEvent.ParticipantDisconnected, handleDisconnected); room.on(RoomEvent.DataReceived, handleDataReceived);
     return () => { room.off(RoomEvent.ParticipantConnected, handleConnected); room.off(RoomEvent.ParticipantDisconnected, handleDisconnected); room.off(RoomEvent.DataReceived, handleDataReceived); };
-  }, [room, localParticipant, pinnedParticipantId, playSoundboardEffect, playTone, addToast]);
+  }, [room, localParticipant, pinnedParticipantId, playTone, addToast]);
 
   const spawnFloatingEmoji = useCallback((emoji) => {
     const id = Date.now() + Math.random(); const leftPos = Math.floor(Math.random() * 60) + 20;
@@ -316,7 +285,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
 
   const toggleDeafen = () => { const nextState = !isDeafened; setIsDeafened(nextState); localParticipant?.setAttributes({ deafened: nextState ? 'true' : 'false' }); };
   const toggleHandRaise = () => { const nextState = !isHandRaised; setIsHandRaised(nextState); localParticipant?.setAttributes({ handRaised: nextState ? 'true' : 'false' }); if (nextState) sendEmojiReaction('✋'); };
-  const toggleAfk = () => { const nextState = !isAfk; setIsAfk(nextState); localParticipant?.setAttributes({ afk: nextState ? 'true' : 'false' }); };
 
   const copyInvite = () => {
     const url = `${window.location.origin}?room=${encodeURIComponent(roomName)}`; navigator.clipboard.writeText(url); setInviteText('✅ Kopyalandı!'); setTimeout(() => setInviteText('🔗 Davet Linki'), 2000);
@@ -448,7 +416,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
             {participants.map((p) => {
               const isUserDeafened = p.attributes?.deafened === 'true';
               const isUserHandRaised = p.attributes?.handRaised === 'true';
-              const isUserAfk = p.attributes?.afk === 'true' || (p.identity === localParticipant?.identity && isAfk);
               const isUserAdmin = p.attributes?.admin === 'true';
               const displayName = (p.name || p.identity || 'Misafir').split('_')[0];
               const isUserSharingScreen = p.isScreenShareEnabled;
@@ -457,11 +424,10 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
               const isPinned = pinnedParticipantId === p.identity;
 
               return (
-                <div key={p.identity} className={`voice-user-card ${p.isSpeaking ? 'speaking' : ''} ${isUserAfk ? 'afk-mode' : ''} ${isPinned ? 'is-pinned' : ''}`} onDoubleClick={isCamOn ? toggleCardFullScreen : undefined}>
+                <div key={p.identity} className={`voice-user-card ${p.isSpeaking ? 'speaking' : ''} ${isPinned ? 'is-pinned' : ''}`} onDoubleClick={isCamOn ? toggleCardFullScreen : undefined}>
                   <div className="quality-indicator"><ConnectionQualityIndicator participant={p} /></div>
                   {isUserHandRaised && <div className="hand-raised-badge">✋</div>}
                   {isUserSharingScreen && <div className="broadcaster-badge">🔴 Yayında</div>}
-                  {isUserAfk && <div className="afk-badge">☕ AFK</div>}
                   {isPinned && <div className="pin-badge">📌</div>}
 
                   {isCamOn ? (<VideoTrack trackRef={{ participant: p, source: Track.Source.Camera }} className={`user-video ${isMirror ? 'mirror' : ''}`} />) : (
@@ -513,7 +479,6 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
           isNoiseCancellingActive={isNoiseCancellingActive}
           noiseStatus={noiseStatus}
           isHandRaised={isHandRaised}
-          isAfk={isAfk}
           onToggleMic={() => { const nextState = !isMicrophoneEnabled; playMicTone(!nextState); localParticipant?.setMicrophoneEnabled(nextState); }}
           onToggleDeafen={toggleDeafen}
           onToggleNoiseCancellation={toggleNoiseCancellation}
@@ -521,9 +486,7 @@ export default function AudioRoom({ roomName, isAdmin, onLeave }) {
           onToggleScreenShare={() => localParticipant?.setScreenShareEnabled(!isScreenShareEnabled, { audio: true })}
           onLeave={handleLeaveRoom}
           onSendEmojiReaction={sendEmojiReaction}
-          onBroadcastSoundboard={broadcastSoundboard}
           onToggleHandRaise={toggleHandRaise}
-          onToggleAfk={toggleAfk}
           onShowSettings={() => setShowSettings(true)}
         />
       </div>

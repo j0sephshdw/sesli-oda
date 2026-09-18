@@ -243,7 +243,7 @@ app.get('/api/users/:username/profile', async (req, res) => {
       unreadDMs: Object.fromEntries(user.unreadDMs || new Map()), bio: user.bio || '',
       color: user.color || '#5865F2', customStatus: user.customStatus || ''
     });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { res.status(500).json({ error: 'Profil verisi çekilemedi: ' + err.message }); }
 });
 
 app.put('/api/users/:username/profile', async (req, res) => {
@@ -259,7 +259,12 @@ app.put('/api/users/:username/profile', async (req, res) => {
 
 app.get('/api/users/search', async (req, res) => {
   const { q, currentUsername } = req.query; if (!q) return res.json({ users: [] });
-  try { const users = await User.find({ username: { $regex: `^${q}`, $options: 'i',$ne: currentUsername } }).limit(15).select('username'); res.json({ users: users.map(u => u.username) }); } catch (err) { res.status(500).json({ error: err.message }); }
+  try { 
+    // GÜVENLİK DÜZELTMESİ: Regex karakterleri temizlendi
+    const safeQuery = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const users = await User.find({ username: { $regex: `^${safeQuery}`, $options: 'i',$ne: currentUsername } }).limit(15).select('username'); 
+    res.json({ users: users.map(u => u.username) }); 
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/friends/add', async (req, res) => {
@@ -346,7 +351,12 @@ app.post('/api/chat', async (req, res) => {
 });
 
 app.get('/api/chat/:roomName', async (req, res) => {
-  try { const messages = await Message.find({ roomName }).sort({ timestamp: -1 }).limit(50); res.json({ messages: messages.reverse() }); } catch (err) { res.status(500).json({ error: err.message }); }
+  try { 
+    // HATA DÜZELTİLDİ: roomName eksikliği DM ve Oda mesajlarının silinmiş gibi gözükmesine sebep oluyordu
+    const roomName = req.params.roomName; 
+    const messages = await Message.find({ roomName }).sort({ timestamp: -1 }).limit(50); 
+    res.json({ messages: messages.reverse() }); 
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.use(express.static(path.join(__dirname, 'dist')));

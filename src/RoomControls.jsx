@@ -9,7 +9,6 @@ export default function RoomControls({
   isNoiseCancellingActive = false,
   noiseStatus = 'Gürültü Engelleme',
   isHandRaised = false,
-  isAfk = false,
   onToggleMic,
   onToggleDeafen,
   onToggleNoiseCancellation,
@@ -17,9 +16,7 @@ export default function RoomControls({
   onToggleScreenShare,
   onLeave,
   onSendEmojiReaction,
-  onBroadcastSoundboard,
   onToggleHandRaise,
-  onToggleAfk,
   onShowSettings
 }) {
   return (
@@ -30,11 +27,6 @@ export default function RoomControls({
         <button onClick={() => onSendEmojiReaction?.('😂')} className="action-btn" title="Gülme" aria-label="Gülme reaksiyonu gönder">😂</button>
         
         <div className="soundboard-separator" role="separator" />
-        
-        <button onClick={() => onBroadcastSoundboard?.('ding')} className="action-btn soundboard-btn" title="Zil Çal" aria-label="Zil sesi çal">🔔</button>
-        <button onClick={() => onBroadcastSoundboard?.('buzzer')} className="action-btn soundboard-btn" title="Yanlış Cevap" aria-label="Buzzer sesi çal">❌</button>
-        
-        <div className="soundboard-separator" role="separator" />
 
         <button 
           onClick={onToggleHandRaise} 
@@ -43,14 +35,6 @@ export default function RoomControls({
           aria-pressed={isHandRaised}
         >
           ✋
-        </button>
-        <button 
-          onClick={onToggleAfk} 
-          className={`action-btn ${isAfk ? 'active-afk' : ''}`} 
-          title="AFK Modu"
-          aria-pressed={isAfk}
-        >
-          ☕
         </button>
         <button onClick={onShowSettings} className="action-btn" title="Ayarlar" aria-label="Ayarları aç">⚙️</button>
       </div>
